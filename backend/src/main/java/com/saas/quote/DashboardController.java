@@ -19,9 +19,10 @@ public class DashboardController {
     record Stats(long thisMonthCount, BigDecimal thisMonthValue, long totalCount, BigDecimal totalValue, long clients,
                  List<Month> months, List<Recent> recent) {}
 
-    @GetMapping
-    public Stats get(@AuthenticationPrincipal Long uid) {
-        List<Quotation> all = repo.findByOwnerIdOrderByIdDesc(uid);
+    @GetMapping @Requires(module = AppModule.QUOTATIONS, right = Right.VIEW)
+    public Stats get(@AuthenticationPrincipal AuthUser me) {
+        List<Quotation> all = me.seesAllQuotations() ? repo.findByOwnerIdOrderByIdDesc(me.tenantId())
+                : repo.findByOwnerIdAndCreatedByOrderByIdDesc(me.tenantId(), me.userId());
         YearMonth now = YearMonth.now();
         Map<Long, BigDecimal> totals = new HashMap<>();
         Set<String> clients = new HashSet<>();

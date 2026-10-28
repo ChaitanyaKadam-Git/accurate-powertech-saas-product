@@ -6,6 +6,7 @@ import java.util.Optional;
 
 public interface QuotationRepo extends JpaRepository<Quotation, Long> {
     List<Quotation> findByOwnerIdOrderByIdDesc(Long ownerId);
+    List<Quotation> findByOwnerIdAndCreatedByOrderByIdDesc(Long ownerId, Long createdBy);
     Optional<Quotation> findByIdAndOwnerId(Long id, Long ownerId);
     long countByOwnerId(Long ownerId);
 }

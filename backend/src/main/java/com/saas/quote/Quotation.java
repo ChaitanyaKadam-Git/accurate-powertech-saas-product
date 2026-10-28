@@ -13,7 +13,8 @@ import java.util.List;
 @Entity @Getter @Setter
 public class Quotation {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @JsonIgnore private Long ownerId;
+    @JsonIgnore private Long ownerId;       // the company (tenant) that owns the record
+    @JsonIgnore private Long createdBy;     // the person who created it (null on records made before roles existed)
 
     private String refNo;
     private LocalDate quoteDate = LocalDate.now();

@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @RestController @RequestMapping("/api/quotations") @RequiredArgsConstructor @Transactional
 public class QuotationController {
@@ -19,67 +22,97 @@ public class QuotationController {
     private final PdfService pdf;
     private final StorageService storage;
     private final TemplateService templates;
+    private final UserRepo users;
+    private final AuditService audit;
 
-    record Summary(Long id, String refNo, String clientName, String projectLocation, LocalDate quoteDate, BigDecimal total) {}
+    record Summary(Long id, String refNo, String clientName, String projectLocation, LocalDate quoteDate, BigDecimal total, String createdBy) {}
 
-    @GetMapping
-    public List<Summary> list(@AuthenticationPrincipal Long uid) {
-        return repo.findByOwnerIdOrderByIdDesc(uid).stream()
-                .map(q -> new Summary(q.getId(), q.getRefNo(), q.getClientName(), q.getProjectLocation(), q.getQuoteDate(), q.getTotal()))
+    /** Quotations this person may see: everything in the company, or only their own, depending on the role. */
+    @GetMapping @Requires(module = AppModule.QUOTATIONS, right = Right.VIEW)
+    public List<Summary> list(@AuthenticationPrincipal AuthUser me) {
+        Map<Long, String> names = new HashMap<>();
+        for (AppUser u : users.findByTenantIdOrderByIdDesc(me.tenantId())) names.put(u.getId(), u.displayName());
+        List<Quotation> rows = me.seesAllQuotations() ? repo.findByOwnerIdOrderByIdDesc(me.tenantId())
+                : repo.findByOwnerIdAndCreatedByOrderByIdDesc(me.tenantId(), me.userId());
+        return rows.stream()
+                .map(q -> new Summary(q.getId(), q.getRefNo(), q.getClientName(), q.getProjectLocation(), q.getQuoteDate(), q.getTotal(),
+                        q.getCreatedBy() == null ? "" : names.getOrDefault(q.getCreatedBy(), "")))
                 .toList();
     }
 
     /** Default PDF sections for a brand-new statement (not saved). */
-    @GetMapping("/template")
-    public List<QuoteSection> template(@AuthenticationPrincipal Long uid) { return templates.defaults(new Quotation(), uid); }
+    @GetMapping("/template") @Requires(module = AppModule.QUOTATIONS, right = Right.CREATE)
+    public List<QuoteSection> template(@AuthenticationPrincipal AuthUser me) { return templates.defaults(new Quotation(), me.tenantId()); }
 
-    @GetMapping("/{id}")
-    public Quotation get(@AuthenticationPrincipal Long uid, @PathVariable Long id) { return own(id, uid); }
+    @GetMapping("/{id}") @Requires(module = AppModule.QUOTATIONS, right = Right.VIEW)
+    public Quotation get(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) { return own(id, me); }
 
-    @PostMapping
-    public Quotation create(@AuthenticationPrincipal Long uid, @RequestBody Quotation in) {
+    @PostMapping @Requires(module = AppModule.QUOTATIONS, right = Right.CREATE)
+    public Quotation create(@AuthenticationPrincipal AuthUser me, @RequestBody Quotation in) {
+        Long tid = me.tenantId();
+        validate(in);
         Quotation q = new Quotation();
-        q.setOwnerId(uid);
-        apply(q, in, uid);
-        if (q.getSections().isEmpty()) fillDefaults(q, uid);
-        if (blank(q.getRefNo())) q.setRefNo(nextRef(uid));
-        return repo.save(q);
+        q.setOwnerId(tid);
+        q.setCreatedBy(me.userId());
+        apply(q, in, tid);
+        if (q.getSections().isEmpty()) fillDefaults(q, tid);
+        if (blank(q.getRefNo())) q.setRefNo(nextRef(tid));
+        Quotation saved = repo.save(q);
+        audit.log(me, AppModule.QUOTATIONS, "CREATE", "Quotation", saved.getId(), saved.getRefNo() + " for " + saved.getClientName());
+        return saved;
     }
 
-    @PutMapping("/{id}")
-    public Quotation update(@AuthenticationPrincipal Long uid, @PathVariable Long id, @RequestBody Quotation in) {
-        Quotation q = own(id, uid);
-        apply(q, in, uid);
-        return repo.save(q);
+    @PutMapping("/{id}") @Requires(module = AppModule.QUOTATIONS, right = Right.EDIT)
+    public Quotation update(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @RequestBody Quotation in) {
+        validate(in);
+        Quotation q = own(id, me);
+        apply(q, in, me.tenantId());
+        Quotation saved = repo.save(q);
+        audit.log(me, AppModule.QUOTATIONS, "EDIT", "Quotation", saved.getId(), saved.getRefNo() + " for " + saved.getClientName());
+        return saved;
     }
 
-    @PostMapping("/{id}/clone")
-    public Quotation clone(@AuthenticationPrincipal Long uid, @PathVariable Long id) {
+    @PostMapping("/{id}/clone") @Requires(module = AppModule.QUOTATIONS, right = Right.CREATE)
+    public Quotation clone(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        Quotation src = own(id, me);
         Quotation c = new Quotation();
-        c.setOwnerId(uid);
-        apply(c, own(id, uid), uid);
-        c.setRefNo(nextRef(uid));
+        c.setOwnerId(me.tenantId());
+        c.setCreatedBy(me.userId());
+        apply(c, src, me.tenantId());
+        c.setRefNo(nextRef(me.tenantId()));
         c.setQuoteDate(LocalDate.now());
-        return repo.save(c);
+        Quotation saved = repo.save(c);
+        audit.log(me, AppModule.QUOTATIONS, "CREATE", "Quotation", saved.getId(), "Duplicated from " + src.getRefNo());
+        return saved;
     }
 
-    @DeleteMapping("/{id}")
-    public void delete(@AuthenticationPrincipal Long uid, @PathVariable Long id) { repo.delete(own(id, uid)); }
+    @DeleteMapping("/{id}") @Requires(module = AppModule.QUOTATIONS, right = Right.DELETE)
+    public void delete(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        Quotation q = own(id, me);
+        audit.log(me, AppModule.QUOTATIONS, "DELETE", "Quotation", q.getId(), q.getRefNo() + " for " + q.getClientName());
+        repo.delete(q);
+    }
 
-    @GetMapping("/{id}/pdf")
-    public ResponseEntity<byte[]> pdf(@AuthenticationPrincipal Long uid, @PathVariable Long id) {
-        Quotation q = own(id, uid);
+    /** ?inline=true opens it in the browser (preview, needs PDF "view"); otherwise it is a download (needs PDF "download"). */
+    @GetMapping("/{id}/pdf") @Requires(module = AppModule.PDF, right = Right.VIEW)
+    public ResponseEntity<byte[]> pdf(@AuthenticationPrincipal AuthUser me, @PathVariable Long id,
+                                      @RequestParam(defaultValue = "false") boolean inline) {
+        if (!inline && !me.can(AppModule.PDF, Right.DOWNLOAD))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to download (" + AppModule.PDF.label + ")");
+        Quotation q = own(id, me);
         String name = (blank(q.getRefNo()) ? "quotation" : q.getRefNo()).replaceAll("[^A-Za-z0-9_-]", "_");
+        if (!inline) audit.log(me, AppModule.PDF, "DOWNLOAD", "Quotation", q.getId(), q.getRefNo());
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + ".pdf\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, (inline ? "inline" : "attachment") + "; filename=\"" + name + ".pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
-                .body(pdf.build(q, uid));
+                .body(pdf.build(q, me.tenantId()));
     }
 
-    /** Loads a statement; statements saved before sections existed get their sections built from the old fields. */
-    private Quotation own(Long id, Long uid) {
-        Quotation q = repo.findByIdAndOwnerId(id, uid).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        if (q.getSections().isEmpty()) fillDefaults(q, uid);
+    /** Loads a statement of this company. People limited to their own quotations get a 404 for anyone else's. */
+    private Quotation own(Long id, AuthUser me) {
+        Quotation q = repo.findByIdAndOwnerId(id, me.tenantId()).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!me.seesAllQuotations() && !Objects.equals(q.getCreatedBy(), me.userId())) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        if (q.getSections().isEmpty()) fillDefaults(q, me.tenantId());
         return q;
     }
 
@@ -88,6 +121,17 @@ public class QuotationController {
     }
 
     private String nextRef(Long uid) { return "QTN/" + LocalDate.now().getYear() + "/" + (repo.countByOwnerId(uid) + 1); }
+
+    /** Phone: digits only, at most 10. Capacity and GST cannot be negative. */
+    private static void validate(Quotation in) {
+        String ph = in.getPhone();
+        if (ph != null && !ph.isBlank() && !ph.matches("\\d{1,10}"))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phone must be digits only, up to 10 digits");
+        if (in.getCapacityKw() != null && in.getCapacityKw().signum() < 0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Capacity cannot be negative");
+        if (in.getGstPercent() != null && in.getGstPercent().signum() < 0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "GST cannot be negative");
+    }
 
     private static boolean blank(String s) { return s == null || s.isBlank(); }
 
