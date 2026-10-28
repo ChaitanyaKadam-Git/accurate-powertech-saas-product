@@ -3,6 +3,7 @@ import { DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Api, CatalogEntry, Item, QSection, Summary } from './api';
+import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
 
 @Component({
@@ -40,11 +41,14 @@ import { ImagePickerComponent } from './image-picker.component';
         <label>Date<input type="date" formControlName="quoteDate" /></label>
         <label>Client name<input formControlName="clientName" /></label>
         <label>Contact person<input formControlName="contactPerson" /></label>
-        <label>Phone<input formControlName="phone" /></label>
+        <label>Phone<input formControlName="phone" inputmode="numeric" maxlength="10" placeholder="10-digit number" (input)="digitsOnly($event)" />
+          @if (form.controls.phone.invalid) { <span class="error small">Phone must be digits only, up to 10 digits.</span> }</label>
         <label>Project location<input formControlName="projectLocation" /></label>
         <label class="wide">Client address<input formControlName="clientAddress" /></label>
-        <label>Capacity (kWp)<input type="number" formControlName="capacityKw" /></label>
-        <label>GST %<input type="number" step="0.1" formControlName="gstPercent" /></label>
+        <label>Capacity (kWp)<input type="number" min="0" formControlName="capacityKw" (keydown)="blockSign($event)" />
+          @if (form.controls.capacityKw.invalid) { <span class="error small">Capacity cannot be negative.</span> }</label>
+        <label>GST %<input type="number" min="0" step="0.1" formControlName="gstPercent" (keydown)="blockSign($event)" />
+          @if (form.controls.gstPercent.invalid) { <span class="error small">GST cannot be negative.</span> }</label>
         <label class="check"><input type="checkbox" formControlName="showItemPrices" /> Show item prices in the list</label>
       </div>
 
@@ -109,7 +113,11 @@ import { ImagePickerComponent } from './image-picker.component';
       </div>
 
       <div class="card">
-        <div class="row"><h3>Items ({{ items.length }})</h3><button type="button" (click)="addItem()">Add item</button></div>
+        <div class="row"><h3>Items ({{ items.length }})</h3>
+          <div>
+            @if (items.length) { <button type="button" class="ghost danger" (click)="removeAll()">Remove all</button> }
+            <button type="button" (click)="addItem()">Add item</button>
+          </div></div>
         <p class="hint">Type an equipment name you used before and pick it from the list to fill in the rest.</p>
         <div class="scroll">
           <table class="items">
@@ -143,8 +151,10 @@ import { ImagePickerComponent } from './image-picker.component';
       </div>
 
       @if (error) { <p class="error">{{ error }}</p> }
-      <button type="submit">Save</button>
-      <button type="button" (click)="save(true)">Save and download PDF</button>
+      @if (canSave) {
+        <button type="submit">Save</button>
+        @if (auth.can('PDF', 'DOWNLOAD')) { <button type="button" (click)="save(true)">Save and download PDF</button> }
+      } @else { <p class="hint">You have view-only access to this statement.</p> }
     </form>
   `,
 })
@@ -153,6 +163,7 @@ export class QuoteFormComponent implements OnInit {
   private api = inject(Api);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  auth = inject(AuthService);
 
   id?: number;
   paste = '';
@@ -165,13 +176,14 @@ export class QuoteFormComponent implements OnInit {
     refNo: '',
     quoteDate: new Date().toISOString().slice(0, 10),
     clientName: ['', Validators.required],
-    clientAddress: '', contactPerson: '', phone: '', projectLocation: '',
-    capacityKw: 30, gstPercent: 8.9, showItemPrices: true,
+    clientAddress: '', contactPerson: '', phone: ['', Validators.pattern(/^\d{0,10}$/)], projectLocation: '',
+    capacityKw: [30, Validators.min(0)], gstPercent: [8.9, Validators.min(0)], showItemPrices: true,
     coverImageKey: '', signatoryName: '', signatoryTitle: '', signatoryPhone: '', signatoryEmail: '',
     items: this.fb.array<any>([]),
     sections: this.fb.array<any>([]),
   });
 
+  get canSave() { return this.id ? this.auth.can('QUOTATIONS', 'EDIT') : this.auth.can('QUOTATIONS', 'CREATE'); }
   get items() { return this.form.controls.items as FormArray; }
   get sections() { return this.form.controls.sections as FormArray; }
   get subtotal() { return this.items.controls.reduce((s, c) => s + (Number(c.value.qty) || 0) * (Number(c.value.unitPrice) || 0), 0); }
@@ -261,6 +273,20 @@ export class QuoteFormComponent implements OnInit {
 
   addItem() { this.items.push(this.newItem()); }
 
+  removeAll() {
+    if (this.items.length && confirm(`Remove all ${this.items.length} item(s) from this statement?`)) this.items.clear();
+  }
+
+  /** Phone: keep digits only (no minus sign, spaces or letters), at most 10. */
+  digitsOnly(ev: Event) {
+    const el = ev.target as HTMLInputElement;
+    const clean = el.value.replace(/\D/g, '').slice(0, 10);
+    if (clean !== el.value) { el.value = clean; this.form.controls.phone.setValue(clean); }
+  }
+
+  /** Number boxes that must not be negative: ignore the minus, plus and exponent keys. */
+  blockSign(ev: KeyboardEvent) { if (['-', '+', 'e', 'E'].includes(ev.key)) ev.preventDefault(); }
+
   /** Re-use an item from an earlier statement: fills only rows that are still empty. */
   fillFromCatalog(i: number) {
     const g = this.items.at(i);
@@ -310,12 +336,12 @@ export class QuoteFormComponent implements OnInit {
     for (let i = this.items.length - 1; i >= 0; i--) {   // drop blank rows
       if (!this.items.at(i).value.equipment?.trim()) this.items.removeAt(i);
     }
-    if (this.form.invalid) { this.form.markAllAsTouched(); this.error = 'Enter the client name.'; return; }
+    if (this.form.invalid) { this.form.markAllAsTouched(); this.error = this.form.controls.phone.invalid ? 'Phone must be digits only, up to 10 digits.' : this.form.controls.capacityKw.invalid ? 'Capacity cannot be negative.' : this.form.controls.gstPercent.invalid ? 'GST cannot be negative.' : 'Enter the client name.'; return; }
     const raw: any = this.form.getRawValue();
     const body: any = { ...raw, sections: raw.sections.map((x: any, n: number) => ({ ...x, position: n })), id: this.id };
     this.api.save(body).subscribe({
       next: q => { if (downloadPdf) this.api.download(q.id!, q.refNo); this.router.navigate(['/statements']); },
-      error: () => (this.error = 'The statement could not be saved. Try again.'),
+      error: e => (this.error = (e.status === 403 || e.status === 400) && e.error?.message ? e.error.message : 'The statement could not be saved. Try again.'),
     });
   }
 }

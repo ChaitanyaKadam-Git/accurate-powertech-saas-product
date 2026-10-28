@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Api, Company, Section } from './api';
 import { Brand } from './brand.service';
+import { AuthService } from './auth';
 import { BrandService } from './brand';
 import { ImagePickerComponent } from './image-picker.component';
 
@@ -13,11 +14,13 @@ import { ImagePickerComponent } from './image-picker.component';
     <div class="page-h"><div><h1>Settings</h1><p class="muted">Configure how the app behaves for your company.</p></div></div>
     <div class="tabs">
       <button [class.on]="tab === 'company'" (click)="tab = 'company'">Company</button>
-      <button [class.on]="tab === 'text'" (click)="tab = 'text'">Standard text</button>
+      @if (auth.can('TEMPLATE_DATA', 'VIEW')) { <button [class.on]="tab === 'text'" (click)="tab = 'text'">Standard text</button> }
       <button [class.on]="tab === 'account'" (click)="tab = 'account'">Account</button>
     </div>
 
     @if (tab === 'company') {
+      @if (!auth.can('TEMPLATES', 'EDIT')) { <p class="hint">You can view the company details but not change them.</p> }
+      <fieldset class="plain" [disabled]="!auth.can('TEMPLATES', 'EDIT')">
       <div class="card">
         <div class="card-h"><div><h3>General</h3><p>Name, address and who signs the cover letter. The name and logo appear at the top of every PDF page.</p></div></div>
         <div class="grid">
@@ -37,11 +40,13 @@ import { ImagePickerComponent } from './image-picker.component';
           <image-picker label="System description diagram" [key]="c.diagramImageKey" (keyChange)="c.diagramImageKey = $event" />
         </div>
       </div>
-      <button (click)="saveCompany()">Save company details</button>
+      </fieldset>
+      @if (auth.can('TEMPLATES', 'EDIT')) { <button (click)="saveCompany()">Save company details</button> }
       @if (companySaved) { <span class="ok">Saved</span> }
     }
 
-    @if (tab === 'text') {
+    @if (tab === 'text' && auth.can('TEMPLATE_DATA', 'VIEW')) {
+      <fieldset class="plain" [disabled]="!auth.can('TEMPLATE_DATA', 'EDIT')">
       <div class="card">
         <div class="card-h"><div><h3>Standard text for new statements</h3>
           <p>New statements start with this text and you can change everything inside each statement. One point per line. For Terms &amp; Conditions write each row as <b>Topic | Details</b>. In the project brief you can use {{ '{capacity}' }}, {{ '{location}' }} and {{ '{client}' }}.</p></div></div>
@@ -49,12 +54,14 @@ import { ImagePickerComponent } from './image-picker.component';
           <div class="sec">
             <div class="row">
               <input class="grow" [(ngModel)]="s.title" />
-              @if (s.sectionKey.startsWith('CUSTOM_')) { <button class="link danger" (click)="remove(s)">Delete section</button> }
+              @if (s.sectionKey.startsWith('CUSTOM_') && auth.can('TEMPLATE_DATA', 'DELETE')) { <button type="button" class="link danger" (click)="remove(s)">Delete section</button> }
             </div>
             <textarea rows="7" [(ngModel)]="s.content"></textarea>
           </div>
         }
       </div>
+      </fieldset>
+      @if (auth.can('TEMPLATE_DATA', 'CREATE')) {
       <div class="card">
         <div class="card-h"><div><h3>Add a standard section</h3><p>It will be included in every new statement.</p></div></div>
         <div class="sec">
@@ -63,20 +70,25 @@ import { ImagePickerComponent } from './image-picker.component';
           <div><button (click)="addSection()">Add section</button></div>
         </div>
       </div>
-      <button (click)="save()">Save standard text</button>
-      <button class="link danger" (click)="reset()">Restore built-in text</button>
+      }
+      @if (auth.can('TEMPLATE_DATA', 'EDIT')) {
+        <button (click)="save()">Save standard text</button>
+        <button class="link danger" (click)="reset()">Restore built-in text</button>
+      }
       @if (saved) { <span class="ok">Saved</span> }
     }
 
     @if (tab === 'account') {
       <div class="card">
         <div class="card-h"><div><h3>Sign-in details</h3><p>Signed in as <b>{{ email }}</b></p></div></div>
-        <div class="grid">
-          <label>New email<input type="email" [(ngModel)]="newEmail" /></label>
-          <label>Current password<input type="password" [(ngModel)]="emailPassword" /></label>
-          <div><button (click)="changeEmail()">Change email</button></div>
-        </div>
-        <hr />
+        @if (auth.isAdmin()) {
+          <div class="grid">
+            <label>New email<input type="email" [(ngModel)]="newEmail" /></label>
+            <label>Current password<input type="password" [(ngModel)]="emailPassword" /></label>
+            <div><button (click)="changeEmail()">Change email</button></div>
+          </div>
+          <hr />
+        } @else { <p class="hint">Your sign-in email is managed by your administrator.</p> }
         <div class="grid">
           <label>Current password<input type="password" [(ngModel)]="oldPassword" /></label>
           <label>New password (min 8 characters)<input type="password" [(ngModel)]="newPassword" /></label>
@@ -91,6 +103,7 @@ export class SectionsComponent implements OnInit {
   private api = inject(Api);
   private route = inject(ActivatedRoute);
   private brand = inject(Brand);
+  auth = inject(AuthService);
 
   tab = 'company';
   sections: Section[] = [];
@@ -105,7 +118,7 @@ export class SectionsComponent implements OnInit {
   ngOnInit() {
     this.route.paramMap.subscribe(p => (this.tab = p.get('tab') || 'company'));
     this.api.account().subscribe(a => (this.email = a.email));
-    this.api.sections().subscribe(s => (this.sections = s));
+    if (this.auth.can('TEMPLATE_DATA', 'VIEW')) this.api.sections().subscribe(s => (this.sections = s));
     this.api.company().subscribe(c => (this.c = { ...this.c, ...Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v ?? (k.endsWith('Key') ? null : '')])) } as Company));
   }
 

@@ -24,7 +24,7 @@ public class SecurityConfig {
         http.csrf(c -> c.disable()).cors(Customizer.withDefaults())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
-            .authorizeHttpRequests(a -> a.requestMatchers("/api/auth/**", "/actuator/health", "/error").permitAll().anyRequest().authenticated())
+            .authorizeHttpRequests(a -> a.requestMatchers("/api/auth/login", "/api/auth/register", "/actuator/health", "/error").permitAll().anyRequest().authenticated())
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

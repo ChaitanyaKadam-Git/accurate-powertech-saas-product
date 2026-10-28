@@ -2,6 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Api, Summary } from './api';
+import { AuthService } from './auth';
 import { BrandService } from './brand';
 import { IconComponent } from './icon.component';
 
@@ -15,8 +16,11 @@ import { IconComponent } from './icon.component';
         <p class="muted">Turn a client enquiry into a finished proposal PDF.</p>
         <span class="chip"><app-icon name="calendar" [size]="16" /> {{ today | date: 'EEEE, d MMM y' }}</span>
       </div>
-      <a class="btn big" routerLink="/quote/new"><app-icon name="plus" [size]="18" /> New statement</a>
+      @if (auth.can('QUOTATIONS', 'CREATE')) { <a class="btn big" routerLink="/quote/new"><app-icon name="plus" [size]="18" /> New statement</a> }
     </div>
+    @if (!auth.can('QUOTATIONS', 'VIEW')) {
+      <div class="card"><h3>Welcome, {{ auth.userName() }}</h3><p class="muted">Your account does not have access to quotations yet. Ask your administrator to grant the rights you need.</p></div>
+    } @else {
 
     <div class="stats">
       <div class="stat blue"><span class="ic"><app-icon name="file" /></span><div><small>Total statements</small><b>{{ rows.length }}</b></div></div>
@@ -39,22 +43,24 @@ import { IconComponent } from './icon.component';
               <tr>
                 <td>{{ r.refNo }}</td><td>{{ r.clientName }}</td><td>{{ r.projectLocation }}</td>
                 <td>{{ r.quoteDate | date: 'dd MMM yyyy' }}</td><td class="r">&#8377;{{ r.total | number: '1.2-2' }}</td>
-                <td class="actions"><a [routerLink]="['/quote', r.id]">Edit</a><button class="link" (click)="api.download(r.id, r.refNo)">PDF</button></td>
+                <td class="actions"><a [routerLink]="['/quote', r.id]">Edit</a>@if (auth.can('PDF', 'DOWNLOAD')) { <button class="link" (click)="api.download(r.id, r.refNo)">PDF</button> }</td>
               </tr>
             }
           </tbody>
         </table>
       }
     </div>
+    }
   `,
 })
 export class DashboardComponent implements OnInit {
   api = inject(Api);
+  auth = inject(AuthService);
   brand = inject(BrandService);
   rows: Summary[] = [];
   today = new Date();
 
-  ngOnInit() { this.api.list().subscribe(r => (this.rows = r)); }
+  ngOnInit() { if (this.auth.can('QUOTATIONS', 'VIEW')) this.api.list().subscribe(r => (this.rows = r)); }
 
   get greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
   get total() { return this.rows.reduce((s, r) => s + (r.total || 0), 0); }

@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { AuthService } from './auth';
+import { AuthService, Signed } from './auth';
 import { BrandService } from './brand';
 import { IconComponent } from './icon.component';
 
@@ -45,8 +45,11 @@ import { IconComponent } from './icon.component';
 
       <section class="auth-panel">
         <div class="auth-card">
-          <h2>{{ registering ? 'Create your account' : 'Welcome back' }}</h2>
-          <p class="muted">{{ registering ? 'Set up your company to start making proposals.' : 'Sign in to your Quote SaaS console.' }}</p>
+          <h2>{{ registering ? 'Create your company account' : 'Sign in' }}</h2>
+          <p class="muted">
+            {{ registering ? 'You will be the administrator who creates users and decides what each of them can do.'
+              : 'Administrators and employees sign in here. You will be taken to the right place automatically.' }}
+          </p>
 
           @if (registering) {
             <label>Company name
@@ -66,10 +69,11 @@ import { IconComponent } from './icon.component';
           </label>
 
           @if (error) { <p class="error">{{ error }}</p> }
-          <div><button class="big" (click)="submit()">{{ registering ? 'Create account' : 'Sign in' }}</button></div>
+          <div><button class="big" [disabled]="busy" (click)="submit()">{{ registering ? 'Create account' : 'Sign in' }}</button></div>
           <button class="link" (click)="registering = !registering; error = ''">
-            {{ registering ? 'I already have an account' : 'Create a new account' }}
+            {{ registering ? 'I already have an account' : 'Create a new company account' }}
           </button>
+          @if (!registering) { <p class="hint">Employees: your administrator creates your account and gives you a temporary password.</p> }
         </div>
       </section>
     </div>
@@ -79,16 +83,23 @@ export class LoginComponent {
   private auth = inject(AuthService);
   private router = inject(Router);
   private brand = inject(BrandService);
-  registering = false; show = false; logoOk = true;
+  registering = false; show = false; logoOk = true; busy = false;
   email = ''; password = ''; company = ''; error = '';
   year = new Date().getFullYear();
 
   submit() {
     this.error = '';
+    if (!this.email.trim() || !this.password) { this.error = 'Enter your email and password.'; return; }
+    this.busy = true;
     const req = this.registering ? this.auth.register(this.email, this.password, this.company) : this.auth.login(this.email, this.password);
     req.subscribe({
-      next: () => { this.brand.refresh(); this.router.navigate(['/']); },
-      error: e => (this.error = e.error?.message || 'Could not sign in. Check your details and try again.'),
+      next: (r: Signed) => {
+        this.busy = false;
+        if (r.mustChangePassword) { this.router.navigate(['/set-password']); return; }   // first sign-in: choose your own password
+        this.brand.refresh();
+        this.router.navigate([r.portal === 'ADMIN' ? '/admin' : '/']);
+      },
+      error: e => { this.busy = false; this.error = e.error?.message || 'Could not sign in. Check your details and try again.'; },
     });
   }
 }
