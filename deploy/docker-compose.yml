@@ -1,0 +1,68 @@
+# Accurate Powertech on the OCCPL dev server, in /home/occpl/accurate (see deploy/README.md).
+# The platform's Caddy (network occpl_default) serves accurate.occplsoftech.com and proxies to accurate-frontend:80;
+# the frontend's nginx forwards /api/ to the backend. Nothing here publishes a host port.
+name: accurate
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: quotes
+      POSTGRES_USER: quotes
+      POSTGRES_PASSWORD: ${DB_PASS:?run bin/accurate-setup.sh first}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quotes -d quotes"]
+      interval: 10s
+      retries: 6
+
+  backend:
+    image: ${IMAGE_PREFIX}-backend:${BACKEND_RELEASE:-latest}
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/quotes
+      DB_USER: quotes
+      DB_PASS: ${DB_PASS}
+      JWT_SECRET: ${JWT_SECRET:?run bin/accurate-setup.sh first}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      PROXY_HOPS: ${PROXY_HOPS:-2}   # Caddy, then the frontend's nginx
+      STORAGE: local
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    volumes: [uploads:/app/uploads]
+    mem_limit: ${BACKEND_MEM_LIMIT:-768m}
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      # The JRE image has no curl; bash's /dev/tcp is enough for one HTTP request.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 6
+
+  frontend:
+    image: ${IMAGE_PREFIX}-frontend:${FRONTEND_RELEASE:-latest}
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8080
+    mem_limit: 128m
+    depends_on: [backend]
+    networks:
+      default: {}
+      occpl:
+        aliases: [accurate-frontend]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      retries: 6
+
+networks:
+  occpl:
+    name: occpl_default
+    external: true
+
+volumes:
+  pgdata:
+  uploads:

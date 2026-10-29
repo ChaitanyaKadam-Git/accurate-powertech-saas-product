@@ -1,0 +1,137 @@
+# Release to the OCCPL dev server (https://accurate.occplsoftech.com): build and test, publish both images
+# (tags: the commit SHA and "latest"), deploy them one by one, smoke-test, and roll back when a container does not
+# become healthy (the server does that by itself, see deploy/bin/accurate-deploy.sh).
+#
+# Run by hand with a full commit SHA in "release" to deploy (or roll back to) images that already exist; nothing is
+# built or tested then. One-time setup of the server, key, secrets and variables: deploy/README.md.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Full commit SHA to deploy again (rollback). Leave empty to test, build and deploy this branch.
+        required: false
+        default: ""
+
+concurrency:
+  group: release
+  cancel-in-progress: false # a running deploy is never cut off by a newer merge; the newer one waits
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      build: ${{ steps.plan.outputs.build }}
+    steps:
+      - id: plan
+        env:
+          INPUT: ${{ inputs.release }}
+        run: |
+          if [ -n "$INPUT" ]; then
+            [[ "$INPUT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::release must be a full 40-character commit SHA"; exit 1; }
+            echo "release=$INPUT" >> "$GITHUB_OUTPUT"; echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=$GITHUB_SHA" >> "$GITHUB_OUTPUT"; echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  ci:
+    name: CI
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  image:
+    name: Publish ${{ matrix.part }} image
+    needs: [plan, ci]
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        part: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image name (GHCR needs lowercase)
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}-${{ matrix.part }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.part }}
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:${{ needs.plan.outputs.release }}
+            ${{ steps.name.outputs.image }}:latest
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.part }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.part }}
+
+  deploy:
+    name: Deploy to dev
+    needs: [plan, image]
+    # Runs after a successful image job, or alone for a rollback (the image job is skipped then).
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.image.result == 'success' || needs.image.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: dev
+    steps:
+      - name: Settings present
+        env:
+          HOST: ${{ vars.VPS_HOST }}
+          URL: ${{ vars.APP_URL }}
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          for name in HOST URL KEY KNOWN_HOSTS; do
+            [ -n "${!name}" ] || { echo "::error::Missing setting for $name; see deploy/README.md"; exit 1; }
+          done
+      - name: SSH access
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Deploy backend (the server rolls back by itself when the container is not healthy)
+        env:
+          HOST: ${{ vars.VPS_HOST }}
+          RELEASE: ${{ needs.plan.outputs.release }}
+        run: ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 "occpl@$HOST" "backend $RELEASE"
+      - name: Deploy frontend
+        env:
+          HOST: ${{ vars.VPS_HOST }}
+          RELEASE: ${{ needs.plan.outputs.release }}
+        run: ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 "occpl@$HOST" "frontend $RELEASE"
+      - name: Smoke test
+        env:
+          URL: ${{ vars.APP_URL }}
+        run: |
+          fail() { echo "SMOKE TEST FAILED: $*" >&2; exit 1; }
+          code() { curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$1"; }
+          # The web app is served.
+          curl -fsS --max-time 20 "$URL/" | grep -q "<app-root" || fail "$URL/ does not serve the app"
+          # Any path falls back to the app (Angular routing).
+          [ "$(code "$URL/login")" = 200 ] || fail "$URL/login is not answering 200"
+          # The web server reaches the backend, and the backend wants a token.
+          [ "$(code "$URL/api/quotes")" = 401 ] || [ "$(code "$URL/api/quotes")" = 403 ] || fail "the web server does not reach the backend"
+          echo "smoke test passed"
+      - name: Remove key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy
