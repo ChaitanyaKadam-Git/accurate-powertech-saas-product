@@ -19,23 +19,20 @@ const EMPTY: Customer = { name: '', contactPerson: '', phone: '', email: '', gst
 
     <div class="card">
       <div class="toolbar">
-        <label>Search<input placeholder="Name, contact, phone, email, city, GSTIN" [(ngModel)]="q" /></label>
+        <label class="grow-field">Search<input placeholder="Name, contact, phone, email, city, GSTIN" [(ngModel)]="q" /></label>
         <label>City<select [(ngModel)]="cityF"><option value="">All cities</option>@for (c of cities; track c) { <option [value]="c">{{ c }}</option> }</select></label>
       </div>
       @if (error) { <p class="error">{{ error }}</p> }
       <div class="scroll"><table>
-        <thead><tr><th>Customer</th><th>Contact</th><th>Phone</th><th>Email</th><th>City</th><th>GSTIN</th><th>Updated</th><th></th></tr></thead>
+        <thead><tr><th>Customer</th><th>Contact</th><th>Email / GSTIN</th><th>City</th><th></th></tr></thead>
         <tbody>
           @for (c of shown; track c.id) {
             <tr>
-              <td><b>{{ c.name }}</b>@if (c.address) { <br /><span class="muted small">{{ c.address }}</span> }</td>
-              <td>{{ c.contactPerson }}</td>
-              <td class="nowrap">{{ c.phone }}</td>
-              <td class="small">{{ c.email }}</td>
-              <td>{{ c.city }}</td>
-              <td class="small nowrap">{{ c.gstin }}</td>
-              <td class="small nowrap">{{ c.updatedAt | date: 'dd MMM yyyy' }}</td>
-              <td class="actions nowrap">
+              <td class="w-main"><b>{{ c.name }}</b>@if (c.address) { <br /><span class="muted small clip" [title]="c.address">{{ c.address }}</span> }</td>
+              <td>{{ c.contactPerson || '-' }}@if (c.phone) { <br /><span class="muted small nowrap">{{ c.phone }}</span> }</td>
+              <td class="small break">{{ c.email || '-' }}@if (c.gstin) { <br /><span class="muted nowrap">GSTIN {{ c.gstin }}</span> }</td>
+              <td>{{ c.city || '-' }}</td>
+              <td class="actions stack-actions">
                 <button class="link" (click)="open(c)">{{ auth.can('CUSTOMERS', 'EDIT') ? 'Edit' : 'View' }}</button>
                 @if (auth.can('CUSTOMERS', 'DELETE')) { <button class="link danger" (click)="remove(c)">Delete</button> }
               </td>
@@ -49,7 +46,7 @@ const EMPTY: Customer = { name: '', contactPerson: '', phone: '', email: '', gst
 
     @if (f) {
       <div class="modal-bg" (click)="f = null"><div class="modal" (click)="$event.stopPropagation()">
-        <div class="modal-h"><h3>{{ f.id ? (editable ? 'Edit customer' : f.name) : 'Add customer' }}</h3><button class="icon-btn" (click)="f = null" aria-label="Close"><app-icon name="x" /></button></div>
+        <div class="modal-h"><div><h3>{{ f.id ? (editable ? 'Edit customer' : f.name) : 'Add customer' }}</h3>@if (f.updatedAt) { <span class="muted small">Last updated {{ f.updatedAt | date: 'dd MMM yyyy, HH:mm' }}</span> }</div><button class="icon-btn" (click)="f = null" aria-label="Close"><app-icon name="x" /></button></div>
         <fieldset class="plain" [disabled]="!editable">
           <div class="grid">
             <label class="wide"><span>Customer name <span class="req">*</span></span><input [(ngModel)]="f.name" placeholder="Company or person" /></label>
