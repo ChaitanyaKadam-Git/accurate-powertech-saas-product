@@ -422,6 +422,45 @@ check("no CUSTOMERS rights: create refused", cust(REENA, {"name": "Y"})[0] == 40
 s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "CUSTOMERS", "size": 200})
 check("customer changes in the audit trail (3 create, 1 edit, 1 delete)", s == 200 and sorted(x["action"] for x in a["items"]) == ["CREATE", "CREATE", "CREATE", "DELETE", "EDIT"], [x["action"] for x in a["items"]] if s == 200 else s)
 
+# ---------------------------------------------------------------- 11c. Masters > Products (kits with parts)
+print("\n== Products")
+prod = lambda token, body: call("POST", "/products", token, body)
+gparts = [{"name": "Engine 4R1040TAG2", "specification": "4 cyl, water cooled", "make": "Kirloskar", "uom": "Nos.", "qty": 1, "unitPrice": 620000},
+          {"name": "Alternator 125 kVA", "make": "Kirloskar", "qty": 1, "unitPrice": 310000},
+          {"name": "Acoustic canopy CPCB IV+", "qty": 1, "unitPrice": 180000},
+          {"name": "AMF panel", "qty": 1, "unitPrice": 95000},
+          {"name": "Power cable 3.5C x 70 sq mm", "uom": "Mtr", "qty": 30, "unitPrice": 850},
+          {"name": "   ", "qty": 1, "unitPrice": 5},
+          {"name": "Earthing kit", "uom": "Set", "qty": 1, "unitPrice": 18000, "imageKey": "1/../" + panel}]
+s, g1 = prod(PRIYA, {"businessLine": "GENSET", "name": "125 kVA KOEL iGreen DG set", "code": "KG1-125WS", "capacity": 125, "parts": gparts})
+check("manager adds a genset product with parts (blank row dropped)", s == 200 and len(g1["parts"]) == 6 and [x["sno"] for x in g1["parts"]] == [1, 2, 3, 4, 5, 6], (s, len(g1.get("parts", [])) if s == 200 else g1))
+check("product total = sum of parts", s == 200 and abs(g1["total"] - (620000 + 310000 + 180000 + 95000 + 25500 + 18000)) < 0.01, g1.get("total"))
+check("part defaults (UOM Nos.) and foreign image key dropped", g1["parts"][2]["uom"] == "Nos." and g1["parts"][5]["imageKey"] is None)
+s, s1 = prod(PRIYA, {"businessLine": "SOLAR", "name": "30 kWp rooftop on-grid", "capacity": 30, "parts": [
+    {"name": "Mono PERC module 540 Wp", "make": "Waaree", "qty": 56, "unitPrice": 14500}, {"name": "String inverter 30 kW", "make": "Sungrow", "qty": 1, "unitPrice": 185000}]})
+check("manager adds a solar product", s == 200 and s1["businessLine"] == "SOLAR")
+check("same name in the same line refused", prod(PRIYA, {"businessLine": "GENSET", "name": "125 KVA koel igreen dg set"})[0] == 409)
+check("same name in another line allowed", prod(PRIYA, {"businessLine": "SOLAR", "name": "125 kVA KOEL iGreen DG set"})[0] == 200)
+check("negative quantity refused", prod(PRIYA, {"businessLine": "GENSET", "name": "Neg", "parts": [{"name": "x", "qty": -1}]})[0] == 400)
+check("negative capacity refused", prod(PRIYA, {"businessLine": "GENSET", "name": "Neg2", "capacity": -5})[0] == 400)
+check("missing name refused", prod(PRIYA, {"businessLine": "GENSET", "name": " "})[0] == 400)
+s, gl = call("GET", "/products", PRIYA, params={"line": "GENSET"})
+check("list filtered by line", s == 200 and {x["businessLine"] for x in gl} == {"GENSET"} and len(gl) == 1)
+check("sales exec (PRODUCTS view only) can list", call("GET", "/products", AMIT)[0] == 200)
+check("sales exec cannot create", prod(AMIT, {"businessLine": "GENSET", "name": "X"})[0] == 403)
+check("sales exec cannot delete", call("DELETE", f"/products/{g1['id']}", AMIT)[0] == 403)
+check("no product or quotation rights: list refused", call("GET", "/products", REENA)[0] == 403)
+s, cp = call("POST", f"/products/{g1['id']}/clone", PRIYA)
+check("duplicate copies parts with a (copy) name", s == 200 and cp["name"] == "125 kVA KOEL iGreen DG set (copy)" and len(cp["parts"]) == 6)
+s, cp2 = call("POST", f"/products/{g1['id']}/clone", PRIYA)
+check("second duplicate gets (copy 2)", s == 200 and cp2["name"] == "125 kVA KOEL iGreen DG set (copy 2)")
+s, up = call("PUT", f"/products/{cp['id']}", PRIYA, {"businessLine": "GENSET", "name": "160 kVA KOEL iGreen DG set", "capacity": 160, "active": False,
+             "parts": [{"name": "Engine 6R1080TAG1", "qty": 1, "unitPrice": 790000}]})
+check("edit replaces parts and can deactivate", s == 200 and up["name"].startswith("160") and len(up["parts"]) == 1 and up["active"] is False)
+check("manager deletes a product", call("DELETE", f"/products/{cp2['id']}", PRIYA)[0] == 200)
+s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PRODUCTS", "size": 200})
+check("product changes in the audit trail", s == 200 and sorted(set(x["action"] for x in a["items"])) == ["CREATE", "DELETE", "EDIT"])
+
 # ---------------------------------------------------------------- 12. other company is isolated
 print("\n== Tenant isolation")
 s, r = call("POST", "/auth/register", body={"email": "owner@othersolar.local", "password": "Other@2026x", "companyName": "Other Solar"})
@@ -430,6 +469,8 @@ check("second company registered", s == 200 and r["portal"] == "ADMIN")
 check("other company sees no quotations", ids(OTHER) == [])
 check("other company sees no customers", call("GET", "/customers", OTHER)[1] == [])
 check("other company cannot open our customer (404)", call("GET", f"/customers/{c1['id']}", OTHER)[0] == 404)
+check("other company sees no products", call("GET", "/products", OTHER)[1] == [])
+check("other company cannot open our product (404)", call("GET", f"/products/{g1['id']}", OTHER)[0] == 404)
 check("other company cannot edit our customer (404)", call("PUT", f"/customers/{c1['id']}", OTHER, {"name": "hack"})[0] == 404)
 check("other company cannot open ours (404)", call("GET", f"/quotations/{q1['id']}", OTHER)[0] == 404)
 check("other company cannot open our user (404)", call("GET", f"/admin/users/{aid}", OTHER)[0] == 404)
