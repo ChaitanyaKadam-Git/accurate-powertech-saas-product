@@ -41,7 +41,7 @@ import { IconComponent } from './icon.component';
                 <td class="small nowrap">{{ u.lastLoginAt ? (u.lastLoginAt | date: 'dd MMM yyyy, HH:mm') : 'Never' }}</td>
                 <td class="small">{{ u.admin ? 'All' : u.permissionCount }} @if (u.grantCount || u.revokeCount) { <span class="badge warn">customised</span> }</td>
                 <td class="actions nowrap">
-                  <a [routerLink]="['/admin/users', u.id]">Rights</a>
+                  <a routerLink="/admin/access" [queryParams]="{ user: u.id }">Access</a>
                   <button class="link" (click)="openForm(u)">Edit</button>
                   <button class="link" (click)="toggle(u)">{{ u.active ? 'Deactivate' : 'Activate' }}</button>
                   <button class="link" (click)="reset(u)">Reset password</button>

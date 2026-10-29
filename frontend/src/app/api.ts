@@ -105,6 +105,7 @@ export class Api {
   setUserActive(id: number, active: boolean) { return this.http.post<UserDto>(`/api/admin/users/${id}/active`, { active }); }
   resetUserPassword(id: number) { return this.http.post<{ tempPassword: string }>(`/api/admin/users/${id}/reset-password`, {}); }
   setUserPermissions(id: number, rights: string[]) { return this.http.put<UserDetail>(`/api/admin/users/${id}/permissions`, { rights }); }
+  setUserAccess(id: number, roleId: number, rights: string[]) { return this.http.put<UserDetail>(`/api/admin/users/${id}/access`, { roleId, rights }); }
   resetUserPermissions(id: number) { return this.http.post<UserDetail>(`/api/admin/users/${id}/permissions/reset`, {}); }
   importUsers(file: File, commit: boolean) {
     const fd = new FormData();

@@ -299,6 +299,31 @@ check("sign-out revokes the token", call("GET", "/me", PRIYA)[0] == 401)
 PRIYA = login("priya@accuratepowertech.local", "Welcome@2026")[1]["token"]
 login("priya@accuratepowertech.local", "wrong-password")
 
+# ---------------------------------------------------------------- 10b. Grant access (role + rights in one save)
+print("\n== Grant access")
+kid = people["kiran@accuratepowertech.local"]["id"]
+KIRAN = login("kiran@accuratepowertech.local", "Welcome@2026")[1]["token"]
+s, mg = call("GET", "/admin/roles", ADMIN); mgr = next(r for r in mg if r["name"] == "Manager")
+want = [k for k in mgr["rights"] if k != "QUOTATIONS:DELETE"] + []
+s, d = call("PUT", f"/admin/users/{kid}/access", ADMIN, {"roleId": mgr["id"], "rights": want})
+check("grant access: role Sales Exec -> Manager minus delete", s == 200 and d["user"]["roleName"] == "Manager" and d["revokes"] == ["QUOTATIONS:DELETE"] and not d["grants"], (s, d.get("revokes") if s == 200 else d))
+check("role change through grant access signs the user out", call("GET", "/me", KIRAN)[0] == 401)
+KIRAN = login("kiran@accuratepowertech.local", "Welcome@2026")[1]["token"]
+check("new role applies: Kiran (Manager, ALL) sees every quotation", len(ids(KIRAN)) == len(ids(ADMIN)))
+check("revoked right applies: Kiran cannot delete", call("DELETE", f"/quotations/{q1['id']}", KIRAN)[0] == 403)
+s, d = call("PUT", f"/admin/users/{kid}/access", ADMIN, {"roleId": mgr["id"], "rights": mgr["rights"]})
+check("same role, rights only: no sign-out", s == 200 and not d["revokes"] and call("GET", "/me", KIRAN)[0] == 200)
+s, se = call("GET", "/admin/roles", ADMIN); sales = next(r for r in se if r["name"] == "Sales Executive")
+s, d = call("PUT", f"/admin/users/{kid}/access", ADMIN, {"roleId": sales["id"], "rights": sales["rights"] + ["CUSTOMERS:DELETE"]})
+check("back to Sales Exec with an extra grant", s == 200 and d["user"]["roleName"] == "Sales Executive" and d["grants"] == ["CUSTOMERS:DELETE"])
+check("admin-only right refused", call("PUT", f"/admin/users/{kid}/access", ADMIN, {"roleId": sales["id"], "rights": ["USERS:VIEW"]})[0] == 400)
+check("unknown right refused", call("PUT", f"/admin/users/{kid}/access", ADMIN, {"roleId": sales["id"], "rights": ["NOPE:VIEW"]})[0] == 400)
+check("missing role refused", call("PUT", f"/admin/users/{kid}/access", ADMIN, {"roleId": None, "rights": []})[0] == 400)
+check("admin cannot change own role here", call("PUT", f"/admin/users/{me['id']}/access", ADMIN, {"roleId": sales["id"], "rights": []})[0] == 400)
+check("non-admin cannot grant access", call("PUT", f"/admin/users/{kid}/access", PRIYA, {"roleId": sales["id"], "rights": []})[0] == 403)
+s, a = call("GET", "/admin/activity/audit", ADMIN, params={"q": "Kiran More: role", "size": 50})
+check("grant access recorded in audit trail", s == 200 and a["total"] >= 3)
+
 # ---------------------------------------------------------------- 11. activity log filters
 print("\n== Activity log filters")
 pid = people["priya@accuratepowertech.local"]["id"]

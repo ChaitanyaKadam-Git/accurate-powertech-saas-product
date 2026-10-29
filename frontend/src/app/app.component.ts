@@ -30,6 +30,7 @@ function labelTables() {
               <div class="group">Administration</div>
               <a routerLink="/admin" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }"><app-icon name="shield" /><span>Overview</span></a>
               <a routerLink="/admin/users" routerLinkActive="on"><app-icon name="users" /><span>Users</span></a>
+              <a routerLink="/admin/access" routerLinkActive="on"><app-icon name="unlock" /><span>Grant access</span></a>
               <a routerLink="/admin/roles" routerLinkActive="on"><app-icon name="key" /><span>Roles &amp; rights</span></a>
               <a routerLink="/admin/activity" routerLinkActive="on"><app-icon name="activity" /><span>Activity log</span></a>
               <div class="group">Workspace</div>
@@ -109,6 +110,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const u = this.router.url;
     if (u === '/' || u === '') return 'Dashboard';
     if (u.startsWith('/admin/users')) return 'Users';
+    if (u.startsWith('/admin/access')) return 'Grant access';
     if (u.startsWith('/admin/roles')) return 'Roles & rights';
     if (u.startsWith('/admin/activity')) return 'Activity log';
     if (u.startsWith('/admin')) return 'Administration';

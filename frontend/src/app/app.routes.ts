@@ -12,6 +12,7 @@ import { AdminUsersComponent } from './admin-users.component';
 import { AdminUserDetailComponent } from './admin-user-detail.component';
 import { AdminRolesComponent } from './admin-roles.component';
 import { AdminActivityComponent } from './admin-activity.component';
+import { AdminAccessComponent } from './admin-access.component';
 
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
@@ -29,6 +30,7 @@ export const routes: Routes = [
           { path: '', component: AdminOverviewComponent },
           { path: 'users', component: AdminUsersComponent },
           { path: 'users/:id', component: AdminUserDetailComponent },
+          { path: 'access', component: AdminAccessComponent },
           { path: 'roles', component: AdminRolesComponent },
           { path: 'activity', component: AdminActivityComponent },
         ],

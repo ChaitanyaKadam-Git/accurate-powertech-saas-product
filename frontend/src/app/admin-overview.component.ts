@@ -36,6 +36,7 @@ import { IconComponent } from './icon.component';
       <div class="card">
         <div class="card-h"><div><h3>Quick actions</h3></div></div>
         <a class="btn" routerLink="/admin/users"><app-icon name="users" [size]="18" /> Manage users</a>
+        <a class="btn" routerLink="/admin/access"><app-icon name="unlock" [size]="18" /> Grant access</a>
         <a class="btn" routerLink="/admin/roles"><app-icon name="shield" [size]="18" /> Roles &amp; rights</a>
         <a class="btn" routerLink="/admin/activity"><app-icon name="activity" [size]="18" /> Activity log</a>
       </div>
