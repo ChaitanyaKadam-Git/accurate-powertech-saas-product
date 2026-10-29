@@ -447,6 +447,45 @@ check("sales exec can read parts", call("GET", "/parts", AMIT)[0] == 200)
 check("sales exec cannot add parts", part(AMIT, {"name": "X"})[0] == 403)
 check("no product or quotation rights: parts refused", call("GET", "/parts", REENA)[0] == 403)
 
+print("\n== Parts import (Excel / CSV)")
+s, tx = call("GET", "/parts/import/template", PRIYA, params={"format": "xlsx"}, raw=True)
+check("Excel template downloads", s == 200 and tx[:2] == b"PK")
+s, tc = call("GET", "/parts/import/template", PRIYA, params={"format": "csv"}, raw=True)
+check("CSV template downloads", s == 200 and tc.startswith(b"Part name,Category,Make"))
+xf = {"file": ("parts.xlsx", tx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files=xf)
+st = {r["name"]: r["status"] for r in rep["rows"]}
+check("xlsx check: 1 new, existing module and cable flagged", s == 200 and rep["total"] == 3 and rep["newCount"] == 1 and st["Power cable 3.5C x 70 sq mm"] == "ERROR" and st["Mono PERC module 540 Wp"] == "ERROR", (s, rep if s != 200 else st))
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "false", "update": "true"}, files=xf)
+check("with update: existing module and cable become UPDATE", s == 200 and rep["updateCount"] == 2 and rep["invalid"] == 0)
+check("check-only saved nothing", not any(x["name"] == "AMF panel 125 kVA" for x in call("GET", "/parts", PRIYA)[1]))
+bad_csv = ("Part name,Category,Make,Specification,UOM,Unit price,HSN,Line\r\n"
+           "Battery 12V 88Ah,Battery,Exide,Starting battery,Nos.,\"9,500\",8507,Genset\r\n"
+           ",Panel,X,,Nos.,100,,Genset\r\n"
+           "Bad price,Misc,,,Nos.,abc,,Both\r\n"
+           "Bad hsn,Misc,,,Nos.,10,12ab,Both\r\n"
+           "Bad line,Misc,,,Nos.,10,,Wind\r\n"
+           "Battery 12V 88Ah,Battery,Exide,again,Nos.,9600,8507,Genset\r\n"
+           "DC cable 4 sq mm,Cable,Polycab,,Mtr,Rs. 45,8544,Solar EPC\r\n").encode()
+cf = {"file": ("parts.csv", bad_csv, "text/csv")}
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files=cf)
+errs = {r["row"]: " ".join(r["errors"]) for r in rep["rows"] if r["errors"]}
+check("csv check: 2 valid, 5 errors with reasons", s == 200 and rep["newCount"] == 2 and rep["invalid"] == 5 and "required" in errs[3]
+      and "not a number" in errs[4] and "HSN" in errs[5] and "Line" in errs[6] and "earlier in the file" in errs[7], (rep.get("newCount"), rep.get("invalid"), errs))
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "true"}, files=cf)
+check("csv commit creates only the valid rows", s == 200 and rep["created"] == 2 and rep["updated"] == 0)
+pl = {x["name"]: x for x in call("GET", "/parts", PRIYA)[1]}
+check("prices with commas / Rs. parsed, line names understood", float(pl["Battery 12V 88Ah"]["unitPrice"]) == 9500 and float(pl["DC cable 4 sq mm"]["unitPrice"]) == 45 and pl["DC cable 4 sq mm"]["businessLine"] == "SOLAR")
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "true", "update": "true"}, files=xf)
+check("xlsx commit with update: 1 created, 2 updated", s == 200 and rep["created"] == 1 and rep["updated"] == 2)
+pl = {x["name"]: x for x in call("GET", "/parts", PRIYA)[1]}
+check("updated part took the new details", pl["Power cable 3.5C x 70 sq mm"]["specification"] == "Armoured, aluminium" and pl["Power cable 3.5C x 70 sq mm"]["businessLine"] == "BOTH")
+check("sales exec cannot import", call("POST", "/parts/import", AMIT, params={"commit": "false"}, files=cf)[0] == 403)
+check("wrong file type refused", call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files={"file": ("parts.txt", b"x", "text/plain")})[0] == 400)
+check("file without the header refused", call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files={"file": ("p.csv", b"Name,Price\r\nx,1\r\n", "text/csv")})[0] == 400)
+s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PRODUCTS", "action": "IMPORT", "size": 10})
+check("imports in the audit trail", s == 200 and a["total"] == 2)
+
 print("\n== Products")
 prod = lambda token, body: call("POST", "/products", token, body)
 gparts = [{"partId": eng["id"], "qty": 1}, {"partId": alt["id"], "qty": 1}, {"partId": can["id"], "qty": 1}, {"partId": amf["id"], "qty": 1},

@@ -39,6 +39,8 @@ export interface Part {
   id?: number; name: string; category: string; businessLine: string; specification: string; make: string; uom: string;
   unitPrice: number; hsnCode: string; imageKey: string | null; active: boolean; updatedAt?: string; usedIn?: number;
 }
+export interface PartImportRow { row: number; name: string; make: string | null; category: string | null; uom: string | null; unitPrice: number; line: string; status: 'NEW' | 'UPDATE' | 'ERROR'; errors: string[]; }
+export interface PartImportReport { committed: boolean; update: boolean; total: number; newCount: number; updateCount: number; invalid: number; created: number; updated: number; rows: PartImportRow[]; }
 /** A product's part: the master part (read-only values) and the quantity. */
 export interface ProductPart {
   id?: number; partId: number | null; qty: number;
@@ -112,6 +114,11 @@ export class Api {
   saveCustomer(c: Customer) { return c.id ? this.http.put<Customer>(`/api/customers/${c.id}`, c) : this.http.post<Customer>('/api/customers', c); }
   parts(line?: string) { return this.http.get<Part[]>('/api/parts', { params: line ? { line } : {} }); }
   savePart(p: Part) { return p.id ? this.http.put<Part>(`/api/parts/${p.id}`, p) : this.http.post<Part>('/api/parts', p); }
+  importParts(file: File, commit: boolean, update: boolean) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return this.http.post<PartImportReport>('/api/parts/import', fd, { params: { commit, update } });
+  }
   deletePart(id: number) { return this.http.delete(`/api/parts/${id}`); }
   products(line?: string) { return this.http.get<Product[]>('/api/products', { params: line ? { line } : {} }); }
   saveProduct(p: Product) { return p.id ? this.http.put<Product>(`/api/products/${p.id}`, p) : this.http.post<Product>('/api/products', p); }
