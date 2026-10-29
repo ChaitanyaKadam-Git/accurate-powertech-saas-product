@@ -103,6 +103,9 @@ th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(-
 td { padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
 .scroll { overflow-x:auto; }
 table.items input.s { width:70px; } table.items input.m { width:110px; }
+table.items td > input:not(.s):not(.m) { min-width:150px; }
+table.items td > textarea { min-width:200px; }
+.badge { white-space:nowrap; }
 .totals { margin-top:14px; text-align:right; display:grid; gap:2px; }
 .totals .grand { font-size:19px; border-top:2px solid #f59e0b; padding-top:4px; }
 
@@ -203,6 +206,7 @@ details summary { cursor:pointer; font-weight:600; }
   table.items.cards td { padding:22px 0 6px; text-align:left; }
   table.items.cards td::before { top:4px; width:100%; }
   table.items input.s, table.items input.m { width:100%; }
+  table.items td > input:not(.s):not(.m), table.items td > textarea { min-width:0; }
   .scroll:has(> table.cards) { overflow:visible; }
   /* rights grid stays a grid: module names stick to the left while the rights scroll */
   .matrix th:first-child, .matrix td:first-child { position:sticky; left:0; background:var(--surface); z-index:1; min-width:150px; }

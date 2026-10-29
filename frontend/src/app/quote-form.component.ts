@@ -2,7 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Api, CatalogEntry, Customer, Item, LINES, QSection, Summary, lineOf } from './api';
+import { Api, CatalogEntry, Customer, Item, LINES, Product, QSection, Summary, lineOf } from './api';
 import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
 
@@ -141,6 +141,14 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
             @if (items.length) { <button type="button" class="ghost danger" (click)="removeAll()">Remove all</button> }
             <button type="button" (click)="addItem()">Add item</button>
           </div></div>
+        @if (lineProducts.length && canSave) {
+          <label>Add a product (copies all its parts into the items)
+            <select #prodSel (change)="addProduct(prodSel.value); prodSel.value = ''">
+              <option value="">Select a {{ line.label }} product</option>
+              @for (p of lineProducts; track p.id) { <option [value]="p.id">{{ p.name }}{{ p.capacity != null ? ' - ' + p.capacity + ' ' + line.unit : '' }} ({{ p.parts.length }} parts)</option> }
+            </select>
+          </label>
+        }
         <p class="hint">Type an equipment name you used before and pick it from the list to fill in the rest.</p>
         <div class="scroll">
           <table class="items">
@@ -195,6 +203,8 @@ export class QuoteFormComponent implements OnInit {
   catalog: CatalogEntry[] = [];
   previous: Summary[] = [];
   customers: Customer[] = [];
+  products: Product[] = [];
+  get lineProducts() { return this.products.filter(p => p.active && p.businessLine === (this.form.value.businessLine || 'SOLAR')); }
   lines = LINES;
   get line() { return lineOf(this.form.value.businessLine); }
 
@@ -220,6 +230,7 @@ export class QuoteFormComponent implements OnInit {
   ngOnInit() {
     this.api.catalog().subscribe(c => (this.catalog = c));
     this.api.customers().subscribe({ next: c => (this.customers = c), error: () => (this.customers = []) });
+    this.api.products().subscribe({ next: p => (this.products = p), error: () => (this.products = []) });
     const p = this.route.snapshot.paramMap.get('id');
     if (!p) {
       this.api.list().subscribe(l => (this.previous = l));
@@ -333,6 +344,19 @@ export class QuoteFormComponent implements OnInit {
     const l = lineOf(key);
     this.form.patchValue({ businessLine: l.key, gstPercent: l.gst, capacityKw: l.capacity });
     this.api.template(l.key).subscribe(t => this.setSections(t));
+  }
+
+  /** Product master -> every part becomes an item; an empty statement also takes the product's capacity. */
+  addProduct(id: string) {
+    const p = this.products.find(x => String(x.id) === id);
+    if (!p) return;
+    const wasEmpty = this.items.length === 0;
+    p.parts.forEach(x => {
+      this.items.push(this.newItem({ equipment: x.name, specification: x.specification ?? '', make: x.make ?? '', uom: x.uom || 'Nos.',
+        qty: Number(x.qty) || 1, unitPrice: Number(x.unitPrice) || 0, imageKey: x.imageKey }));
+      if (x.imageKey) this.loadPreview(x.imageKey);
+    });
+    if (wasEmpty && p.capacity != null) this.form.patchValue({ capacityKw: Number(p.capacity) });
   }
 
   /** Customer master -> client fields of this statement (the statement keeps its own copy). */

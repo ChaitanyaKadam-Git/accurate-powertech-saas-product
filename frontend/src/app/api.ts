@@ -34,6 +34,11 @@ export interface Customer {
   id?: number; name: string; contactPerson: string; phone: string; email: string; gstin: string;
   address: string; city: string; notes: string; createdAt?: string; updatedAt?: string;
 }
+export interface ProductPart { id?: number; name: string; specification: string; make: string; uom: string; qty: number; unitPrice: number; imageKey: string | null; amount?: number; }
+export interface Product {
+  id?: number; businessLine: string; name: string; code: string; capacity: number | null; description: string; active: boolean;
+  parts: ProductPart[]; total?: number; createdAt?: string; updatedAt?: string;
+}
 export interface CatalogEntry { equipment: string; specification: string; make: string; uom: string; unitPrice: number; imageKey: string | null; }
 
 export interface DashStats {
@@ -96,6 +101,10 @@ export class Api {
 
   customers() { return this.http.get<Customer[]>('/api/customers'); }
   saveCustomer(c: Customer) { return c.id ? this.http.put<Customer>(`/api/customers/${c.id}`, c) : this.http.post<Customer>('/api/customers', c); }
+  products(line?: string) { return this.http.get<Product[]>('/api/products', { params: line ? { line } : {} }); }
+  saveProduct(p: Product) { return p.id ? this.http.put<Product>(`/api/products/${p.id}`, p) : this.http.post<Product>('/api/products', p); }
+  cloneProduct(id: number) { return this.http.post<Product>(`/api/products/${id}/clone`, {}); }
+  deleteProduct(id: number) { return this.http.delete(`/api/products/${id}`); }
   deleteCustomer(id: number) { return this.http.delete(`/api/customers/${id}`); }
 
   // ---- administration ----
