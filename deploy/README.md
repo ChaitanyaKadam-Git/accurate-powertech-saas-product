@@ -43,3 +43,17 @@ release if not. A smoke test checks the site afterwards. To roll back by hand: A
    variable `APP_URL` = `https://accurate.occplsoftech.com`. Delete the private key file afterwards.
 
 When the files in `deploy/` change, copy them to the server again (step 3); the workflow deploys images only.
+
+## Backups
+`bin/accurate-backup.sh` dumps the database (`pg_dump -Fc`) and archives the photo volume into `~/accurate/backups`
+(7 days, `KEEP_DAYS` in `.env` to change). With `BACKUP_S3_URI=s3://bucket/accurate/` in `.env` each run is also synced
+to S3. Log: `~/accurate/backups.log`. Schedule it once (02:45 IST, after the platform's 02:00 backup):
+```bash
+(crontab -l 2>/dev/null | grep -v accurate-backup; echo "15 21 * * * $HOME/accurate/bin/accurate-backup.sh") | crontab -
+```
+Restore (stops the backend, replaces ALL data with the backup, starts it again):
+`bin/accurate-backup.sh restore backups/db-<stamp>.dump [backups/uploads-<stamp>.tgz]`
+
+## Database changes
+The schema is managed by Flyway (`backend/src/main/resources/db/migration`); Hibernate only validates it. Any entity change
+needs a new `V<n>__<what>.sql` in the same commit, otherwise the backend refuses to start and the release rolls back.
