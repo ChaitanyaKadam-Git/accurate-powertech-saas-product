@@ -224,7 +224,7 @@ export class AdminUsersComponent implements OnInit {
   private csv(rows: string[][], name: string) {
     const esc = (v: string) => { let s = (v ?? '').replace(/"/g, '""'); if (/^[=+\-@]/.test(s)) s = "'" + s; return `"${s}"`; };
     const blob = new Blob(['\uFEFF' + rows.map(r => r.map(esc).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
   downloadErrors() {
     if (!this.report) return;

@@ -6,6 +6,9 @@ import { Api, CatalogEntry, Item, QSection, Summary } from './api';
 import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
 
+/** Today as yyyy-mm-dd in the browser's time zone. */
+const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 @Component({
   standalone: true,
   imports: [ReactiveFormsModule, FormsModule, DecimalPipe, ImagePickerComponent],
@@ -174,7 +177,7 @@ export class QuoteFormComponent implements OnInit {
 
   form = this.fb.nonNullable.group({
     refNo: '',
-    quoteDate: new Date().toISOString().slice(0, 10),
+    quoteDate: localDate(),
     clientName: ['', Validators.required],
     clientAddress: '', contactPerson: '', phone: ['', Validators.pattern(/^\d{0,10}$/)], projectLocation: '',
     capacityKw: [30, Validators.min(0)], gstPercent: [8.9, Validators.min(0)], showItemPrices: true,
@@ -325,7 +328,7 @@ export class QuoteFormComponent implements OnInit {
     if (!f) return;
     this.api.upload(f).subscribe({
       next: r => { this.items.at(index).patchValue({ imageKey: r.key }); this.loadPreview(r.key); },
-      error: () => (this.error = 'That file could not be uploaded. Use a JPG or PNG under 8 MB.'),
+      error: () => (this.error = 'That file could not be uploaded. Use a JPG or PNG under 20 MB.'),
     });
   }
 

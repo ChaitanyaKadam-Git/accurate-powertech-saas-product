@@ -34,7 +34,7 @@ export class ImagePickerComponent implements OnChanges {
     this.error = '';
     this.api.upload(f).subscribe({
       next: r => this.keyChange.emit(r.key),
-      error: () => (this.error = 'Upload failed. Use a JPG or PNG under 8 MB.'),
+      error: () => (this.error = 'Upload failed. Use a JPG or PNG under 20 MB.'),
     });
   }
 }

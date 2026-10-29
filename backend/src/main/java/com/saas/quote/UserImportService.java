@@ -22,6 +22,9 @@ public class UserImportService {
 
     public static String digits(String s) { return s == null ? "" : s.replaceAll("\\D", ""); }
 
+    /** Key for "same mobile number": the last 10 digits, so +91 98765 43210, 098765 43210 and 9876543210 all match. */
+    public static String mobileKey(String s) { String d = digits(s); return d.length() > 10 ? d.substring(d.length() - 10) : d; }
+
     /** Shared by single create, edit and bulk import. Returns the problems with these values (empty = fine). */
     public static List<String> check(String name, String email, String mobile, String roleName) {
         List<String> e = new ArrayList<>();

@@ -19,6 +19,7 @@ public class SectionController {
     public List<FixedSection> save(@AuthenticationPrincipal AuthUser me, @RequestBody List<FixedSection> in) {
         Long uid = me.tenantId();
         for (FixedSection x : in) {
+            if (x.getId() == null) continue;
             repo.findById(x.getId()).filter(s -> s.getOwnerId().equals(uid)).ifPresent(s -> {
                 s.setTitle(x.getTitle());
                 s.setContent(x.getContent());

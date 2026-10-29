@@ -2,7 +2,6 @@ import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Api, Company, Section } from './api';
-import { Brand } from './brand.service';
 import { AuthService } from './auth';
 import { BrandService } from './brand';
 import { ImagePickerComponent } from './image-picker.component';
@@ -102,7 +101,7 @@ import { ImagePickerComponent } from './image-picker.component';
 export class SectionsComponent implements OnInit {
   private api = inject(Api);
   private route = inject(ActivatedRoute);
-  private brand = inject(Brand);
+  private brand = inject(BrandService);
   auth = inject(AuthService);
 
   tab = 'company';
@@ -141,7 +140,7 @@ export class SectionsComponent implements OnInit {
 
   saveCompany() {
     this.api.saveCompany(this.c).subscribe(() => {
-      this.brand.load();   // refresh the name and logo in the top bar
+      this.brand.refresh();   // refresh the name and logo in the top bar
       this.companySaved = true;
       setTimeout(() => (this.companySaved = false), 2500);
     });
