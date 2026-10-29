@@ -59,6 +59,5 @@ Cheaper alternative for a first client: one EC2 (t3.small) running `docker compo
 Server layout and one-time setup: [deploy/README.md](deploy/README.md).
 
 ## Before real client data
-- Replace `ddl-auto: update` with Flyway migrations.
 - Move the JWT from localStorage to an httpOnly cookie, or keep it short-lived with refresh tokens.
 - Add rate limiting on /api/auth/*, and automated tests (a QA background will help here).
