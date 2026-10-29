@@ -13,27 +13,29 @@ public class SectionController {
     private final AuditService audit;
 
     @GetMapping @Requires(module = AppModule.TEMPLATE_DATA, right = Right.VIEW)
-    public List<FixedSection> all(@AuthenticationPrincipal AuthUser me) { return service.ensure(me.tenantId()); }
+    public List<FixedSection> all(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "SOLAR") String line) { return service.ensure(me.tenantId(), BusinessLine.of(line)); }
 
     @PutMapping @Transactional @Requires(module = AppModule.TEMPLATE_DATA, right = Right.EDIT)
-    public List<FixedSection> save(@AuthenticationPrincipal AuthUser me, @RequestBody List<FixedSection> in) {
+    public List<FixedSection> save(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "SOLAR") String line, @RequestBody List<FixedSection> in) {
+        BusinessLine bl = BusinessLine.of(line);
         Long uid = me.tenantId();
         for (FixedSection x : in) {
             if (x.getId() == null) continue;
-            repo.findById(x.getId()).filter(s -> s.getOwnerId().equals(uid)).ifPresent(s -> {
+            repo.findById(x.getId()).filter(s -> s.getOwnerId().equals(uid) && bl.name().equals(s.getBusinessLine())).ifPresent(s -> {
                 s.setTitle(x.getTitle());
                 s.setContent(x.getContent());
             });
         }
-        audit.log(me, AppModule.TEMPLATE_DATA, "EDIT", "Standard text", null, in.size() + " section(s) saved");
-        return repo.findByOwnerIdOrderByPosition(uid);
+        audit.log(me, AppModule.TEMPLATE_DATA, "EDIT", "Standard text", null, bl.label + ": " + in.size() + " section(s) saved");
+        return repo.findByOwnerIdAndBusinessLineOrderByPosition(uid, bl.name());
     }
 
     /** Adds a standard section that every new statement starts with. */
     @PostMapping @Requires(module = AppModule.TEMPLATE_DATA, right = Right.CREATE)
-    public FixedSection add(@AuthenticationPrincipal AuthUser me, @RequestBody FixedSection in) {
+    public FixedSection add(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "SOLAR") String line, @RequestBody FixedSection in) {
         FixedSection s = new FixedSection();
         s.setOwnerId(me.tenantId());
+        s.setBusinessLine(BusinessLine.of(line).name());
         s.setSectionKey("CUSTOM_" + java.util.UUID.randomUUID());
         s.setPosition(50);
         s.setTitle(in.getTitle() == null || in.getTitle().isBlank() ? "New section" : in.getTitle());
@@ -52,8 +54,9 @@ public class SectionController {
     }
 
     @PostMapping("/reset") @Requires(module = AppModule.TEMPLATE_DATA, right = Right.EDIT)
-    public List<FixedSection> reset(@AuthenticationPrincipal AuthUser me) {
-        audit.log(me, AppModule.TEMPLATE_DATA, "EDIT", "Standard text", null, "Reset to built-in text");
-        return service.reset(me.tenantId());
+    public List<FixedSection> reset(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "SOLAR") String line) {
+        BusinessLine bl = BusinessLine.of(line);
+        audit.log(me, AppModule.TEMPLATE_DATA, "EDIT", "Standard text", null, bl.label + ": reset to built-in text");
+        return service.reset(me.tenantId(), bl);
     }
 }

@@ -11,35 +11,35 @@ public class SectionService {
 
     /** Adds any standard section the tenant is missing (older accounts) and fixes the display order. */
     @Transactional
-    public List<FixedSection> ensure(Long uid) {
-        List<FixedSection> cur = repo.findByOwnerIdOrderByPosition(uid);
+    public List<FixedSection> ensure(Long uid, BusinessLine line) {
+        List<FixedSection> cur = repo.findByOwnerIdAndBusinessLineOrderByPosition(uid, line.name());
         Map<String, FixedSection> have = new HashMap<>();
         for (FixedSection s : cur) have.put(s.getSectionKey(), s);
         List<FixedSection> add = new ArrayList<>();
-        for (FixedSection def : DefaultSections.forOwner(uid)) {
+        for (FixedSection def : DefaultSections.forOwner(uid, line)) {
             FixedSection ex = have.get(def.getSectionKey());
             if (ex == null) add.add(def); else ex.setPosition(def.getPosition());
         }
         if (!add.isEmpty()) repo.saveAll(add);
-        return repo.findByOwnerIdOrderByPosition(uid);
+        return repo.findByOwnerIdAndBusinessLineOrderByPosition(uid, line.name());
     }
 
     /** Overwrites every standard section with the built-in text. */
     @Transactional
-    public List<FixedSection> reset(Long uid) {
+    public List<FixedSection> reset(Long uid, BusinessLine line) {
         Map<String, FixedSection> have = new HashMap<>();
-        for (FixedSection s : repo.findByOwnerIdOrderByPosition(uid)) have.put(s.getSectionKey(), s);
-        for (FixedSection def : DefaultSections.forOwner(uid)) {
+        for (FixedSection s : repo.findByOwnerIdAndBusinessLineOrderByPosition(uid, line.name())) have.put(s.getSectionKey(), s);
+        for (FixedSection def : DefaultSections.forOwner(uid, line)) {
             FixedSection ex = have.get(def.getSectionKey());
             if (ex == null) repo.save(def);
             else { ex.setTitle(def.getTitle()); ex.setContent(def.getContent()); ex.setPosition(def.getPosition()); }
         }
-        return repo.findByOwnerIdOrderByPosition(uid);
+        return repo.findByOwnerIdAndBusinessLineOrderByPosition(uid, line.name());
     }
 
-    public Map<String, FixedSection> mapFor(Long uid) {
+    public Map<String, FixedSection> mapFor(Long uid, BusinessLine line) {
         Map<String, FixedSection> m = new LinkedHashMap<>();
-        for (FixedSection s : ensure(uid)) m.put(s.getSectionKey(), s);
+        for (FixedSection s : ensure(uid, line)) m.put(s.getSectionKey(), s);
         return m;
     }
 }

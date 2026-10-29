@@ -14,29 +14,34 @@ public class TemplateService {
 
     /** q may be an empty Quotation (new statement) or an old one whose text still sits in the legacy columns. */
     public List<QuoteSection> defaults(Quotation q, Long uid) {
-        Map<String, FixedSection> fx = sections.mapFor(uid);
+        BusinessLine line = BusinessLine.of(q.getBusinessLine());
+        boolean genset = line == BusinessLine.GENSET;
+        Map<String, FixedSection> fx = sections.mapFor(uid, line);
         AppUser u = users.findById(uid).orElseThrow();
         List<QuoteSection> out = new ArrayList<>();
 
         fixed(out, fx, "BRIEF", "PARAGRAPH", null);
         fixed(out, fx, "SYSTEM", "PARAGRAPH", u.getDiagramImageKey());
         fixed(out, fx, "PROFILE", "BULLETS", null);
-        add(out, "TEXT", "Scope of Work for Proposed Project", q.getScopeText(), "BULLETS", null);
+        add(out, "TEXT", genset ? "Scope of Supply" : "Scope of Work for Proposed Project", q.getScopeText(), "BULLETS", null);
         fixed(out, fx, "CLIENT_SCOPE", "BULLETS", null);
         add(out, "TEXT", "Inclusions", q.getInclusions(), "BULLETS", null);
         add(out, "TEXT", "Exclusions", q.getExclusions(), "BULLETS", null);
-        add(out, "BOM", "Major Bill of Material for Proposed System", null, "BULLETS", null);
+        add(out, "BOM", genset ? "Bill of Material" : "Major Bill of Material for Proposed System", null, "BULLETS", null);
         add(out, "OFFER", "Commercial Offer", null, "BULLETS", null);
         if (q.getPaymentTerms() != null && !q.getPaymentTerms().isBlank())
             add(out, "TEXT", "Terms of Payments", q.getPaymentTerms(), "BULLETS", null);
         else fixed(out, fx, "PAYMENT", "BULLETS", null);
+        // any other standard section of this line (for example the genset "Service Support", or ones the company added)
         for (Map.Entry<String, FixedSection> e : fx.entrySet())
-            if (e.getKey().startsWith("CUSTOM_")) add(out, "TEXT", e.getValue().getTitle(), e.getValue().getContent(), "BULLETS", null);
+            if (!CORE.contains(e.getKey())) add(out, "TEXT", e.getValue().getTitle(), e.getValue().getContent(), "BULLETS", null);
         fixed(out, fx, "TERMS", "TABLE", null);
 
         for (int i = 0; i < out.size(); i++) out.get(i).setPosition(i);
         return out;
     }
+
+    private static final java.util.Set<String> CORE = java.util.Set.of("BRIEF", "SYSTEM", "PROFILE", "CLIENT_SCOPE", "PAYMENT", "TERMS");
 
     private void fixed(List<QuoteSection> out, Map<String, FixedSection> fx, String key, String style, String imageKey) {
         FixedSection f = fx.get(key);

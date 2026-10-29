@@ -9,8 +9,21 @@ import java.util.List;
 final class DefaultSections {
     private DefaultSections() {}
 
+    /** Standard text of every business line, for a new company. */
     static List<FixedSection> forOwner(Long o) {
-        return List.of(
+        List<FixedSection> all = new java.util.ArrayList<>();
+        for (BusinessLine l : BusinessLine.values()) all.addAll(forOwner(o, l));
+        return all;
+    }
+
+    static List<FixedSection> forOwner(Long o, BusinessLine line) {
+        List<FixedSection> l = line == BusinessLine.GENSET ? genset(o) : solar(o);
+        l.forEach(s -> s.setBusinessLine(line.name()));
+        return l;
+    }
+
+    private static List<FixedSection> solar(Long o) {
+        return new java.util.ArrayList<>(List.of(
             sec(o, "BRIEF", 1, "Project's Brief", """
                 The proposed project is a grid connected {capacity} KWp grid tied Solar Photovoltaic (PV) power project to be developed at {location}.
                 The project will be developed by installation of solar PV modules, solar string inverters and balance of plant materials to feed power to the utility grid.
@@ -54,7 +67,52 @@ final class DefaultSections {
                 Force majeure & jurisdiction | This proposal and the resulting order are subject to standard force majeure clauses. Any dispute is subject to Pune, Maharashtra jurisdiction only.
                 Estimated generation | Figures are indicative, depend on site weather conditions and are not a generation guarantee. The contractor is not responsible for generation loss due to grid unavailability or the system being switched off or under breakdown.
                 Quotation validity | 7 days from the date of quotation; after that, written confirmation is required.
-                Special note | Load increment charges, additional deposit (if any) and new meter charges are at actual to the customer."""));
+                Special note | Load increment charges, additional deposit (if any) and new meter charges are at actual to the customer.""")));
+    }
+
+    /** Diesel generator sets (sale, installation and commissioning). Starting text: every company edits it under Settings. */
+    private static List<FixedSection> genset(Long o) {
+        return new java.util.ArrayList<>(List.of(
+            sec(o, "BRIEF", 1, "Offer Brief", """
+                We are pleased to submit our offer for supply, installation and commissioning of a {capacity} kVA diesel generator set for {client} at {location}.
+                The genset is offered with a CPCB-compliant acoustic enclosure, a brushless alternator, an AMF / manual control panel and a base-mounted fuel tank, as per the bill of material.
+                Final rating may vary after load assessment at site."""),
+            sec(o, "SYSTEM", 2, "Genset - System Description", """
+                The diesel generator set consists of a water / air cooled diesel engine close coupled to a brushless alternator, mounted on a common base frame with anti-vibration mounts.
+                The acoustic enclosure is powder coated CRCA sheet steel with fire-retardant acoustic foam, designed to meet CPCB noise and emission norms.
+                The control panel monitors engine and alternator parameters, protects the set against faults and, with an AMF panel, starts the genset automatically on mains failure and transfers the load.
+                Remote monitoring (IoT) and QR-code based service requests are available on supported models."""),
+            sec(o, "PROFILE", 3, "Company Profile", """
+                Established in 1999 and headquartered in Pune, Maharashtra. ISO 9001:2015 certified.
+                Authorised dealer for diesel generator sets from 2.8 kVA to 2000 kVA, with more than 25,000 satisfied customers across India.
+                Four verticals: new genset sales and support, rental power, electrical control panels (HT & LT) and a Solar division.
+                Factory-trained manpower for installation, commissioning and after-sales service."""),
+            sec(o, "CLIENT_SCOPE", 4, "Client's Scope", """
+                Civil foundation as per our drawing, and a clear, approachable location for unloading and placing the genset.
+                Power and control cabling from the genset to the client's panel, unless included in our bill of material.
+                Earthing pits and earthing strip, unless included in our bill of material.
+                Exhaust piping beyond the standard length supplied with the genset.
+                First fill of diesel and lubricant top-up during commissioning.
+                Electrical Inspector / CEIG approvals and any statutory permissions required at site.
+                Crane, hydra and unloading arrangements at site, unless included in our offer."""),
+            sec(o, "PAYMENT", 5, "Terms of Payments", """
+                30% advance along with the confirmed purchase order.
+                70% against proforma invoice, before dispatch.
+                Installation and commissioning charges, if any, on completion."""),
+            sec(o, "TERMS", 6, "Terms & Conditions", """
+                Price basis | Prices are for supply of the genset as per the bill of material. GST and freight as mentioned in the commercial offer.
+                Delivery | 2-3 weeks from the date of receipt of purchase order and advance, subject to model availability.
+                Installation & commissioning | Within 7 days of readiness of the foundation, cabling and fuel at site.
+                Warranty | As per the manufacturer's standard warranty for the engine and alternator, from the date of commissioning or dispatch, whichever applies. Wear and tear, misuse and force majeure are not covered.
+                Maintenance contract | Comprehensive maintenance contracts (for example 5 years / 6000 hours) are available on request.
+                Compliance | Gensets comply with the applicable CPCB emission and noise norms.
+                Bank details | [Add bank name, account number, account name, IFSC code and GST number under Settings > Standard text]
+                Force majeure & jurisdiction | This offer and the resulting order are subject to standard force majeure clauses. Any dispute is subject to Pune, Maharashtra jurisdiction only.
+                Quotation validity | 15 days from the date of quotation; after that, written confirmation is required."""),
+            sec(o, "WARRANTY_SERVICE", 7, "Service Support", """
+                Free service visits as per the manufacturer's schedule during the warranty period.
+                Service support from our trained service engineers across Maharashtra.
+                Genuine spares and lubricants available on request.""")));
     }
 
     private static FixedSection sec(Long owner, String key, int pos, String title, String content) {

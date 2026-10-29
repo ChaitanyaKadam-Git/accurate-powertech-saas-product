@@ -1,7 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { Api, Company, Section } from './api';
+import { Api, Company, LINES, Section, lineOf } from './api';
 import { AuthService } from './auth';
 import { BrandService } from './brand';
 import { ImagePickerComponent } from './image-picker.component';
@@ -47,7 +47,10 @@ import { ImagePickerComponent } from './image-picker.component';
     @if (tab === 'text' && auth.can('TEMPLATE_DATA', 'VIEW')) {
       <fieldset class="plain" [disabled]="!auth.can('TEMPLATE_DATA', 'EDIT')">
       <div class="card">
-        <div class="card-h"><div><h3>Standard text for new statements</h3>
+        <div class="seg" style="margin-bottom:14px">
+          @for (l of lines; track l.key) { <button type="button" [class.on]="line === l.key" (click)="setLine(l.key)">{{ l.label }}</button> }
+        </div>
+        <div class="card-h"><div><h3>Standard text for new {{ lineLabel }} statements</h3>
           <p>New statements start with this text and you can change everything inside each statement. One point per line. For Terms &amp; Conditions write each row as <b>Topic | Details</b>. In the project brief you can use {{ '{capacity}' }}, {{ '{location}' }} and {{ '{client}' }}.</p></div></div>
         @for (s of sections; track s.id) {
           <div class="sec">
@@ -62,7 +65,7 @@ import { ImagePickerComponent } from './image-picker.component';
       </fieldset>
       @if (auth.can('TEMPLATE_DATA', 'CREATE')) {
       <div class="card">
-        <div class="card-h"><div><h3>Add a standard section</h3><p>It will be included in every new statement.</p></div></div>
+        <div class="card-h"><div><h3>Add a standard section</h3><p>It will be included in every new {{ lineLabel }} statement.</p></div></div>
         <div class="sec">
           <input placeholder="Section title" [(ngModel)]="newTitle" />
           <textarea rows="3" placeholder="Text (one point per line)" [(ngModel)]="newContent"></textarea>
@@ -113,13 +116,19 @@ export class SectionsComponent implements OnInit {
   email = ''; newEmail = ''; emailPassword = ''; oldPassword = ''; newPassword = '';
   accountMsg = ''; accountError = false;
   newTitle = ''; newContent = '';
+  lines = LINES;
+  line = 'SOLAR';
+  get lineLabel() { return lineOf(this.line).label; }
 
   ngOnInit() {
     this.route.paramMap.subscribe(p => (this.tab = p.get('tab') || 'company'));
     this.api.account().subscribe(a => (this.email = a.email));
-    if (this.auth.can('TEMPLATE_DATA', 'VIEW')) this.api.sections().subscribe(s => (this.sections = s));
+    if (this.auth.can('TEMPLATE_DATA', 'VIEW')) this.loadSections();
     this.api.company().subscribe(c => (this.c = { ...this.c, ...Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v ?? (k.endsWith('Key') ? null : '')])) } as Company));
   }
+
+  loadSections() { this.api.sections(this.line).subscribe(s => (this.sections = s)); }
+  setLine(key: string) { if (key !== this.line) { this.line = key; this.saved = false; this.loadSections(); } }
 
   private say(msg: string, error = false) { this.accountMsg = msg; this.accountError = error; }
   private fail = (e: any) => this.say(e.error?.message || 'Something went wrong. Try again.', true);
@@ -148,7 +157,7 @@ export class SectionsComponent implements OnInit {
 
   addSection() {
     if (!this.newTitle.trim()) return;
-    this.api.addSection(this.newTitle, this.newContent).subscribe(s => { this.sections.push(s); this.newTitle = ''; this.newContent = ''; });
+    this.api.addSection(this.line, this.newTitle, this.newContent).subscribe(s => { this.sections.push(s); this.newTitle = ''; this.newContent = ''; });
   }
 
   remove(s: Section) {
@@ -157,11 +166,11 @@ export class SectionsComponent implements OnInit {
   }
 
   save() {
-    this.api.saveSections(this.sections).subscribe(s => { this.sections = s; this.saved = true; setTimeout(() => (this.saved = false), 2500); });
+    this.api.saveSections(this.line, this.sections).subscribe(s => { this.sections = s; this.saved = true; setTimeout(() => (this.saved = false), 2500); });
   }
 
   reset() {
-    if (confirm('Replace all standard text with the built-in version? Your edits to it will be lost.'))
-      this.api.resetSections().subscribe(s => (this.sections = s));
+    if (confirm(`Replace all ${this.lineLabel} standard text with the built-in version? Your edits to it will be lost.`))
+      this.api.resetSections(this.line).subscribe(s => (this.sections = s));
   }
 }
