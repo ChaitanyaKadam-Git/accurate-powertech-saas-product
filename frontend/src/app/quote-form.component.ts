@@ -13,9 +13,12 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
   standalone: true,
   imports: [ReactiveFormsModule, FormsModule, DecimalPipe, ImagePickerComponent, RouterLink],
   template: `
-    <h2>{{ id ? 'Edit statement' : 'New statement' }} <span class="badge">{{ line.label }}</span>
-      @if (enquiryRef) { <a class="badge" [routerLink]="['/enquiries', form.value.enquiryId]">For {{ enquiryRef }}</a> }
-      @if (customerCode) { <a class="code" [routerLink]="['/customers', form.value.customerId]">{{ customerCode }}</a> }</h2>
+    <div class="page-h">
+      <div><h1>{{ id ? 'Edit statement' : 'New statement' }} <span class="badge">{{ line.label }}</span>
+        @if (enquiryRef) { <a class="badge" [routerLink]="['/enquiries', form.value.enquiryId]">For {{ enquiryRef }}</a> }
+        @if (customerCode) { <a class="code" [routerLink]="['/customers', form.value.customerId]">{{ customerCode }}</a> }</h1>
+        <p class="muted">{{ id ? (form.value.refNo || '') + (form.value.clientName ? ' · ' + form.value.clientName : '') : 'Client details, PDF sections and items for a new proposal.' }}</p></div>
+    </div>
 
     @if (!id) {
       <div class="card">

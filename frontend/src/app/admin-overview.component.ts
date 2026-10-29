@@ -8,7 +8,7 @@ import { IconComponent } from './icon.component';
   standalone: true,
   imports: [RouterLink, DatePipe, IconComponent],
   template: `
-    <div class="page-h"><div><h1>Administration</h1><p class="muted">Users, rights and activity for your company.</p></div></div>
+    <div class="page-h"><div><h1>Administration</h1><p class="muted">Users, rights and activity at a glance.</p></div></div>
 
     @if (o) {
       <div class="stats">

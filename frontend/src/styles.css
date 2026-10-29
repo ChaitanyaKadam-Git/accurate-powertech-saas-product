@@ -362,3 +362,18 @@ table.data tbody tr:hover td:first-child { background:#f6f8fd; }
 /* row actions in one row */
 table.data td.actions, table.data td.stack-actions, table.data td.action-grid { width:auto; min-width:0; white-space:nowrap; }
 table.data td.actions > a, table.data td.actions > button { display:inline-flex; width:auto; margin:0 6px 0 0; }
+
+/* ================= page header banner: one line, short description, actions on the right ================= */
+.page-h { align-items:center; gap:16px; margin:0 0 16px; padding:14px 20px; background:var(--surface); border:1px solid var(--line);
+  border-left:4px solid var(--primary); border-radius:16px; box-shadow:var(--shadow); }
+.page-h > div:first-child { flex:1 1 auto; min-width:0; }
+.page-h h1 { font-size:20px; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-wrap:nowrap; }
+.page-h p, .page-h p.muted { margin:2px 0 0; font-size:13px; max-width:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.page-h .btn, .page-h button { min-height:38px; padding:8px 14px; }
+/* the "back to list" link above a detail page sits close to its header */
+main > p:first-child { margin:0 0 8px; }
+@media (max-width: 640px) {
+  .page-h { flex-wrap:wrap; padding:12px 14px; }
+  .page-h h1 { font-size:18px; }
+  .page-h p, .page-h p.muted { white-space:normal; }
+}

@@ -14,7 +14,7 @@ const emptyPart = (): ProductPart => ({ partId: null, qty: 1 });
   imports: [FormsModule, DecimalPipe, DatePipe, IconComponent, RouterLink],
   template: `
     <div class="page-h">
-      <div><h1>Products</h1><p class="muted">Genset and solar setups built from the <a routerLink="/parts">Parts</a> master. In a statement, "Add a product" copies all its parts into the items.</p></div>
+      <div><h1>Products</h1><p class="muted">Genset and solar setups built from <a routerLink="/parts">Parts</a>.</p></div>
       @if (auth.can('PRODUCTS', 'CREATE')) { <button (click)="open()"><app-icon name="plus" [size]="18" /> Add product</button> }
     </div>
 

@@ -14,11 +14,11 @@ const EMPTY: Part = { name: '', category: '', businessLine: 'BOTH', specificatio
   imports: [FormsModule, DecimalPipe, DatePipe, IconComponent, ImagePickerComponent],
   template: `
     <div class="page-h">
-      <div><h1>Parts</h1><p class="muted">Every part or component once, with its price. Products are built from these parts.</p></div>
+      <div><h1>Parts</h1><p class="muted">Every component once, with its current price.</p></div>
       @if (auth.can('PRODUCTS', 'CREATE')) {
         <div>
           <button class="ghost" (click)="openImport()"><app-icon name="upload" [size]="18" /> Import Excel</button>
-          <button class="ghost" (click)="bulk = true; bulkText = ''; bulkResult = ''">Paste from Excel</button>
+          <button class="ghost" (click)="bulk = true; bulkText = ''; bulkResult = ''" title="Paste rows copied from Excel">Paste rows</button>
           <button (click)="open()"><app-icon name="plus" [size]="18" /> Add part</button>
         </div>
       }

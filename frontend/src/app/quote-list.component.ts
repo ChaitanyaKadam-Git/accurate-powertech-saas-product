@@ -11,7 +11,7 @@ import { IconComponent } from './icon.component';
   imports: [RouterLink, DecimalPipe, DatePipe, FormsModule, IconComponent],
   template: `
     <div class="page-h">
-      <div><h1>Statements</h1><p class="muted">Create, duplicate and download your proposals.</p></div>
+      <div><h1>Statements</h1><p class="muted">Create, duplicate and download proposals.</p></div>
       @if (auth.can('QUOTATIONS', 'CREATE')) { <a class="btn" routerLink="/quote/new"><app-icon name="plus" [size]="18" /> New statement</a> }
     </div>
     <div class="card">

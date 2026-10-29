@@ -14,7 +14,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
   imports: [FormsModule, DatePipe, DecimalPipe, RouterLink, IconComponent],
   template: `
     <div class="page-h">
-      <div><h1>Enquiries</h1><p class="muted">The customer flow: enquiry, site visit, quotation, order, delivery, installation and commissioning.</p></div>
+      <div><h1>Enquiries</h1><p class="muted">Every enquiry from first contact to commissioning.</p></div>
       @if (auth.can('CUSTOMERS', 'CREATE')) { <button (click)="openNew()"><app-icon name="plus" [size]="18" /> New enquiry</button> }
     </div>
 

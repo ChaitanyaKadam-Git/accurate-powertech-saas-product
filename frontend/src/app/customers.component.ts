@@ -14,7 +14,7 @@ const EMPTY: Customer = { code: '', name: '', contactPerson: '', phone: '', emai
   imports: [FormsModule, DatePipe, IconComponent, RouterLink],
   template: `
     <div class="page-h">
-      <div><h1>Customers</h1><p class="muted">Clients you prepare statements for. Pick one in a new statement to fill in the client details.</p></div>
+      <div><h1>Customers</h1><p class="muted">Your clients, each tracked by a customer code.</p></div>
       @if (auth.can('CUSTOMERS', 'CREATE')) { <button (click)="open()"><app-icon name="plus" [size]="18" /> Add customer</button> }
     </div>
 

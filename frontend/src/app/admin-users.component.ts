@@ -10,7 +10,7 @@ import { IconComponent } from './icon.component';
   imports: [FormsModule, RouterLink, DatePipe, IconComponent],
   template: `
     <div class="page-h">
-      <div><h1>Users</h1><p class="muted">Create people one at a time or in bulk, give them a role, and switch them on or off.</p></div>
+      <div><h1>Users</h1><p class="muted">Add people, assign roles and switch accounts on or off.</p></div>
       <div>
         <button class="ghost" (click)="openImport()"><app-icon name="upload" [size]="18" /> Bulk import</button>
         <button (click)="openForm()"><app-icon name="plus" [size]="18" /> Add user</button>
