@@ -119,9 +119,15 @@ public class PdfService {
 
     // ---------- pages ----------
     private void cover(Document d, Quotation q, AppUser u) throws Exception {
-        d.add(centered("TECHNO-COMMERCIAL PROPOSAL FOR ENGINEERING, PROCUREMENT AND CONSTRUCTION", TITLE, 12));
-        d.add(centered("FOR", B, 12));
-        d.add(centered(kw(q) + " KWp DC GRID CONNECTED ROOFTOP SOLAR PHOTOVOLTAIC POWER PROJECT, " + s(q.getProjectLocation()).toUpperCase(), RED_B, 14));
+        if (genset(q)) {
+            d.add(centered("TECHNO-COMMERCIAL OFFER", TITLE, 12));
+            d.add(centered("FOR", B, 12));
+            d.add(centered("SUPPLY, INSTALLATION & COMMISSIONING OF " + kw(q) + " KVA DIESEL GENERATOR SET, " + s(q.getProjectLocation()).toUpperCase(), RED_B, 14));
+        } else {
+            d.add(centered("TECHNO-COMMERCIAL PROPOSAL FOR ENGINEERING, PROCUREMENT AND CONSTRUCTION", TITLE, 12));
+            d.add(centered("FOR", B, 12));
+            d.add(centered(kw(q) + " KWp DC GRID CONNECTED ROOFTOP SOLAR PHOTOVOLTAIC POWER PROJECT, " + s(q.getProjectLocation()).toUpperCase(), RED_B, 14));
+        }
         d.add(centered("PREPARED FOR", B, 4));
         d.add(centered(s(q.getClientName()), BB, 4));
         d.add(centered(s(q.getClientAddress()), B, 14));
@@ -157,13 +163,23 @@ public class PdfService {
         d.add(new Paragraph("\nTo,\n" + s(q.getClientName()) + "\n" + s(q.getClientAddress()), B));
         if (!blank(q.getContactPerson()) || !blank(q.getPhone()))
             d.add(new Paragraph("\nMr./Ms. " + s(q.getContactPerson()) + "\nPhone: " + s(q.getPhone()), B));
-        d.add(new Paragraph("\nSUBJECT: Turnkey EPC Proposal for Developing Your Proposed " + kw(q)
-                + " KWp Grid Connected Roof Mount Solar Photovoltaic (PV) Power Project at " + s(q.getProjectLocation()) + ".", BB));
-        d.add(new Paragraph("\nDear Sir,\n\nWe thank you for showing your interest and providing us an opportunity to submit our proposal for developing "
-                + kw(q) + " KWp (DC) grid tied rooftop system at " + s(q.getProjectLocation()) + ".\n\n"
-                + "As desired, we are sending across the offer for design, engineering, procurement, supply, commissioning and testing of the complete system on a total turnkey basis.\n\n"
-                + "May we look forward to your positive response in the matter and give us an opportunity to develop a solar photovoltaic power project for your esteemed organization.\n\n"
-                + "Thanking you,\nYours faithfully,\n\n", B));
+        if (genset(q)) {
+            d.add(new Paragraph("\nSUBJECT: Offer for Supply, Installation & Commissioning of " + kw(q) + " kVA Diesel Generator Set at "
+                    + s(q.getProjectLocation()) + ".", BB));
+            d.add(new Paragraph("\nDear Sir,\n\nWe thank you for your enquiry and the opportunity to submit our offer for a " + kw(q)
+                    + " kVA diesel generator set for your requirement at " + s(q.getProjectLocation()) + ".\n\n"
+                    + "Please find enclosed our techno-commercial offer, covering the genset specification, bill of material, commercial terms and our scope of service.\n\n"
+                    + "We look forward to your valued order and assure you of our best services at all times.\n\n"
+                    + "Thanking you,\nYours faithfully,\n\n", B));
+        } else {
+            d.add(new Paragraph("\nSUBJECT: Turnkey EPC Proposal for Developing Your Proposed " + kw(q)
+                    + " KWp Grid Connected Roof Mount Solar Photovoltaic (PV) Power Project at " + s(q.getProjectLocation()) + ".", BB));
+            d.add(new Paragraph("\nDear Sir,\n\nWe thank you for showing your interest and providing us an opportunity to submit our proposal for developing "
+                    + kw(q) + " KWp (DC) grid tied rooftop system at " + s(q.getProjectLocation()) + ".\n\n"
+                    + "As desired, we are sending across the offer for design, engineering, procurement, supply, commissioning and testing of the complete system on a total turnkey basis.\n\n"
+                    + "May we look forward to your positive response in the matter and give us an opportunity to develop a solar photovoltaic power project for your esteemed organization.\n\n"
+                    + "Thanking you,\nYours faithfully,\n\n", B));
+        }
 
         StringBuilder sig = new StringBuilder();
         String name = pick(q.getSignatoryName(), u.getSignatoryName()), title = pick(q.getSignatoryTitle(), u.getSignatoryTitle());
@@ -231,7 +247,9 @@ public class PdfService {
             c.setBackgroundColor(BAR);
             t.addCell(c);
         }
-        t.addCell(cell("Design, engineering, supply, installation & commissioning of " + kw(q) + " KW on-grid system as per plant layout & BOM", SM, Element.ALIGN_LEFT));
+        t.addCell(cell(genset(q)
+                ? "Supply, installation & commissioning of " + kw(q) + " kVA diesel generator set with acoustic enclosure and control panel as per BOM"
+                : "Design, engineering, supply, installation & commissioning of " + kw(q) + " KW on-grid system as per plant layout & BOM", SM, Element.ALIGN_LEFT));
         t.addCell(cell(rs(q.getSubtotal()), SM, Element.ALIGN_RIGHT));
         t.addCell(cell(rs(q.getGstAmount()), SM, Element.ALIGN_RIGHT));
         t.addCell(cell(rs(q.getTotal()), SM, Element.ALIGN_RIGHT));
@@ -261,6 +279,8 @@ public class PdfService {
     }
 
     // ---------- helpers ----------
+    private static boolean genset(Quotation q) { return BusinessLine.of(q.getBusinessLine()) == BusinessLine.GENSET; }
+
     private String kw(Quotation q) { return q.getCapacityKw() == null ? "" : q.getCapacityKw().stripTrailingZeros().toPlainString(); }
 
     private String fill(String text, Quotation q) {

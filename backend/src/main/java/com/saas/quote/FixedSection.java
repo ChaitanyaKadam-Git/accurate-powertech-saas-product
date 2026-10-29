@@ -10,6 +10,7 @@ import lombok.Setter;
 public class FixedSection {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @JsonIgnore private Long ownerId;
+    @Column(nullable = false, length = 20) private String businessLine = BusinessLine.SOLAR.name();
     private String sectionKey;   // PROFILE | CLIENT_SCOPE | PAYMENT | TERMS
     private int position;
     private String title;

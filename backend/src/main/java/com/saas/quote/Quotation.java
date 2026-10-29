@@ -16,6 +16,7 @@ public class Quotation {
     @JsonIgnore private Long ownerId;       // the company (tenant) that owns the record
     @JsonIgnore private Long createdBy;     // the person who created it (null on records made before roles existed)
 
+    @Column(nullable = false, length = 20) private String businessLine = BusinessLine.SOLAR.name();   // SOLAR | GENSET
     private String refNo;
     private LocalDate quoteDate = LocalDate.now();
     private String clientName;

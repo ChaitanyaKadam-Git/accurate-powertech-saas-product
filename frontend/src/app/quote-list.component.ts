@@ -2,7 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { Api, Summary } from './api';
+import { Api, LINES, Summary, lineOf } from './api';
 import { AuthService } from './auth';
 import { IconComponent } from './icon.component';
 
@@ -15,16 +15,19 @@ import { IconComponent } from './icon.component';
       @if (auth.can('QUOTATIONS', 'CREATE')) { <a class="btn" routerLink="/quote/new"><app-icon name="plus" [size]="18" /> New statement</a> }
     </div>
     <div class="card">
-      <input class="search" placeholder="Search by client, reference or location" [(ngModel)]="query" />
+      <div class="toolbar">
+        <label class="grow-field">Search<input placeholder="Client, reference or location" [(ngModel)]="query" /></label>
+        <label>Business line<select [(ngModel)]="lineF"><option value="">All lines</option>@for (l of lines; track l.key) { <option [value]="l.key">{{ l.label }}</option> }</select></label>
+      </div>
       @if (shown.length === 0) { <p class="muted">No statements found.</p> }
       @else {
         <div class="scroll">
           <table>
-            <thead><tr><th>Ref</th><th>Client</th><th>Location</th><th>Date</th><th class="r">Total (incl. GST)</th>@if (auth.isAdmin() || auth.can('QUOTATIONS','VIEW') && showOwner) { <th>Created by</th> }<th></th></tr></thead>
+            <thead><tr><th>Ref</th><th>Line</th><th>Client</th><th>Location</th><th>Date</th><th class="r">Total (incl. GST)</th>@if (auth.isAdmin() || auth.can('QUOTATIONS','VIEW') && showOwner) { <th>Created by</th> }<th></th></tr></thead>
             <tbody>
               @for (r of shown; track r.id) {
                 <tr>
-                  <td>{{ r.refNo }}</td><td>{{ r.clientName }}</td><td>{{ r.projectLocation }}</td>
+                  <td>{{ r.refNo }}</td><td><span class="badge">{{ lineOf(r.businessLine).label }}</span></td><td>{{ r.clientName }}</td><td>{{ r.projectLocation }}</td>
                   <td>{{ r.quoteDate | date: 'dd MMM yyyy' }}</td><td class="r">&#8377;{{ r.total | number: '1.2-2' }}</td>
                   @if (auth.isAdmin() || showOwner) { <td>{{ r.createdBy }}</td> }
                   <td class="actions">
@@ -49,6 +52,9 @@ export class QuoteListComponent implements OnInit {
   private router = inject(Router);
   rows: Summary[] = [];
   query = '';
+  lineF = '';
+  lines = LINES;
+  lineOf = lineOf;
   get showOwner() { return this.rows.some(r => !!r.createdBy); }
 
   ngOnInit() { this.load(); }
@@ -56,7 +62,8 @@ export class QuoteListComponent implements OnInit {
 
   get shown() {
     const q = this.query.trim().toLowerCase();
-    return q ? this.rows.filter(r => [r.refNo, r.clientName, r.projectLocation].some(v => (v || '').toLowerCase().includes(q))) : this.rows;
+    return this.rows.filter(r => (!this.lineF || (r.businessLine || 'SOLAR') === this.lineF)
+      && (!q || [r.refNo, r.clientName, r.projectLocation].some(v => (v || '').toLowerCase().includes(q))));
   }
 
   copy(id: number) { this.api.clone(id).subscribe(q => this.router.navigate(['/quote', q.id])); }

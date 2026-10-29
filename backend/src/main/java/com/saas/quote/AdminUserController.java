@@ -34,6 +34,7 @@ public class AdminUserController {
     record Created(UserDto user, String tempPassword) {}
     record Active(boolean active) {}
     record Rights(List<String> rights) {}
+    record Access(Long roleId, List<String> rights) {}
     record Detail(UserDto user, List<String> rolePermissions, List<String> permissions, List<String> grants, List<String> revokes) {}
 
     private UserDto dto(AppUser u) {
@@ -181,6 +182,45 @@ public class AdminUserController {
         Set<String> removed = new TreeSet<>(beforeEff); removed.removeAll(want);
         audit.log(me, AppModule.USERS, "PERMISSIONS", "User", u.getId(),
                 u.getName() + ": granted " + (added.isEmpty() ? "none" : added) + "; revoked " + (removed.isEmpty() ? "none" : removed));
+        return get(me, id);
+    }
+
+    /**
+     * Grant access: the person's role and their exact rights in one save. Rights the new role does not give become grants,
+     * role rights missing from the list become revokes. A role change signs the person out so the new access applies at once.
+     */
+    @PutMapping("/{id}/access")
+    public Detail setAccess(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @RequestBody Access in) {
+        AppUser u = find(id, me);
+        if (in.roleId() == null) throw bad("Choose a role");
+        Role r = role(in.roleId(), me);
+        boolean roleChanged = u.getRole() == null || !u.getRole().getId().equals(r.getId());
+        if (roleChanged && u.getId().equals(me.userId())) throw bad("You cannot change your own role");
+        if (roleChanged && u.isAdminUser() && !r.isAdminRole()) assertNotLastAdmin(me, u, "change the role of");
+
+        Set<String> want = new HashSet<>();
+        if (!r.isAdminRole()) for (String k : in.rights() == null ? List.<String>of() : in.rights()) {
+            if (!AppModule.valid(k)) throw bad("Unknown right: " + k);
+            if (AppModule.isAdminOnly(k)) throw bad("Administration rights come only with the Admin role");
+            want.add(k);
+        }
+        String beforeRole = u.getRole() == null ? "-" : u.getRole().getName();
+        Set<String> beforeEff = access.effective(u);
+        u.setRole(r);
+        Set<String> base = access.roleBase(r);
+        u.getGrants().clear(); u.getRevokes().clear();
+        if (!r.isAdminRole()) {
+            Set<String> g = new HashSet<>(want); g.removeAll(base);
+            Set<String> v = new HashSet<>(base); v.removeAll(want);
+            u.getGrants().addAll(g); u.getRevokes().addAll(v);
+        }
+        users.save(u);
+        if (roleChanged) sessions.closeAll(u.getId(), Instant.now(), "ROLE_CHANGED");
+        Set<String> after = access.effective(u);
+        Set<String> added = new TreeSet<>(after); added.removeAll(beforeEff);
+        Set<String> removed = new TreeSet<>(beforeEff); removed.removeAll(after);
+        audit.log(me, AppModule.USERS, "PERMISSIONS", "User", u.getId(), u.getName() + ": role " + (roleChanged ? beforeRole + " -> " + r.getName() : r.getName())
+                + "; granted " + (added.isEmpty() ? "none" : added) + "; revoked " + (removed.isEmpty() ? "none" : removed));
         return get(me, id);
     }
 

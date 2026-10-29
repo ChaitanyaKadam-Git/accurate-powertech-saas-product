@@ -2,7 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Api, CatalogEntry, Item, QSection, Summary } from './api';
+import { Api, CatalogEntry, Customer, Item, LINES, QSection, Summary, lineOf } from './api';
 import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
 
@@ -13,7 +13,19 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
   standalone: true,
   imports: [ReactiveFormsModule, FormsModule, DecimalPipe, ImagePickerComponent],
   template: `
-    <h2>{{ id ? 'Edit statement' : 'New statement' }}</h2>
+    <h2>{{ id ? 'Edit statement' : 'New statement' }} <span class="badge">{{ line.label }}</span></h2>
+
+    @if (!id) {
+      <div class="card">
+        <span class="lbl">Business line</span>
+        <div class="seg">
+          @for (l of lines; track l.key) {
+            <button type="button" [class.on]="form.value.businessLine === l.key" (click)="setLine(l.key)">{{ l.label }}</button>
+          }
+        </div>
+        <p class="hint">Sets the standard text, PDF wording, capacity unit ({{ line.unit }}) and default GST ({{ line.gst }}%).</p>
+      </div>
+    }
 
     @if (!id) {
       <div class="card">
@@ -40,6 +52,14 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
 
     <form [formGroup]="form" (ngSubmit)="save(false)">
       <div class="card grid">
+        @if (customers.length && canSave) {
+          <label class="wide">Customer (fills in the client details below)
+            <select (change)="pickCustomer($any($event.target).value)">
+              <option value="">Select a saved customer</option>
+              @for (c of customers; track c.id) { <option [value]="c.id">{{ c.name }}{{ c.city ? ' - ' + c.city : '' }}</option> }
+            </select>
+          </label>
+        }
         <label>Reference no.<input formControlName="refNo" placeholder="Filled in automatically" /></label>
         <label>Date<input type="date" formControlName="quoteDate" /></label>
         <label>Client name<input formControlName="clientName" /></label>
@@ -48,7 +68,7 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
           @if (form.controls.phone.invalid) { <span class="error small">Phone must be digits only, up to 10 digits.</span> }</label>
         <label>Project location<input formControlName="projectLocation" /></label>
         <label class="wide">Client address<input formControlName="clientAddress" /></label>
-        <label>Capacity (kWp)<input type="number" min="0" formControlName="capacityKw" (keydown)="blockSign($event)" />
+        <label>Capacity ({{ line.unit }})<input type="number" min="0" formControlName="capacityKw" (keydown)="blockSign($event)" />
           @if (form.controls.capacityKw.invalid) { <span class="error small">Capacity cannot be negative.</span> }</label>
         <label>GST %<input type="number" min="0" step="0.1" formControlName="gstPercent" (keydown)="blockSign($event)" />
           @if (form.controls.gstPercent.invalid) { <span class="error small">GST cannot be negative.</span> }</label>
@@ -174,8 +194,12 @@ export class QuoteFormComponent implements OnInit {
   previews: Record<string, string> = {};
   catalog: CatalogEntry[] = [];
   previous: Summary[] = [];
+  customers: Customer[] = [];
+  lines = LINES;
+  get line() { return lineOf(this.form.value.businessLine); }
 
   form = this.fb.nonNullable.group({
+    businessLine: 'SOLAR',
     refNo: '',
     quoteDate: localDate(),
     clientName: ['', Validators.required],
@@ -195,11 +219,12 @@ export class QuoteFormComponent implements OnInit {
 
   ngOnInit() {
     this.api.catalog().subscribe(c => (this.catalog = c));
+    this.api.customers().subscribe({ next: c => (this.customers = c), error: () => (this.customers = []) });
     const p = this.route.snapshot.paramMap.get('id');
     if (!p) {
       this.api.list().subscribe(l => (this.previous = l));
-      // a new statement starts with the company's standard sections
-      this.api.template().subscribe(t => this.setSections(t));
+      // a new statement starts with the company's standard sections of the chosen line
+      this.api.template(this.form.value.businessLine!).subscribe(t => this.setSections(t));
       return;
     }
     this.id = +p;
@@ -300,12 +325,32 @@ export class QuoteFormComponent implements OnInit {
     if (e.imageKey) this.loadPreview(e.imageKey);
   }
 
+  /** New statement only: switching the line reloads its standard sections and the line's capacity and GST defaults. */
+  setLine(key: string) {
+    if (key === this.form.value.businessLine) return;
+    const touched = this.sections.dirty || this.items.length > 0;
+    if (touched && !confirm('Switch the business line? The PDF sections are replaced with the standard text of that line. Items and client details stay.')) return;
+    const l = lineOf(key);
+    this.form.patchValue({ businessLine: l.key, gstPercent: l.gst, capacityKw: l.capacity });
+    this.api.template(l.key).subscribe(t => this.setSections(t));
+  }
+
+  /** Customer master -> client fields of this statement (the statement keeps its own copy). */
+  pickCustomer(id: string) {
+    const c = this.customers.find(x => String(x.id) === id);
+    if (!c) return;
+    this.form.patchValue({
+      clientName: c.name, clientAddress: c.address ?? '', contactPerson: c.contactPerson ?? '',
+      phone: (c.phone ?? '').replace(/\D/g, '').slice(0, 10), projectLocation: c.city ?? this.form.value.projectLocation ?? '',
+    });
+  }
+
   copyFrom(id: string) {
     if (!id) return;
     if (this.items.length > 0 && !confirm('Replace the items and text on this page with the previous statement?')) return;
     this.api.get(+id).subscribe(q => {
       this.form.patchValue(this.clean({
-        gstPercent: q.gstPercent, capacityKw: q.capacityKw, showItemPrices: q.showItemPrices, coverImageKey: q.coverImageKey,
+        businessLine: q.businessLine || 'SOLAR', gstPercent: q.gstPercent, capacityKw: q.capacityKw, showItemPrices: q.showItemPrices, coverImageKey: q.coverImageKey,
         signatoryName: q.signatoryName, signatoryTitle: q.signatoryTitle, signatoryPhone: q.signatoryPhone, signatoryEmail: q.signatoryEmail,
       }));
       this.setSections(q.sections);

@@ -25,7 +25,7 @@ public class QuotationController {
     private final UserRepo users;
     private final AuditService audit;
 
-    record Summary(Long id, String refNo, String clientName, String projectLocation, LocalDate quoteDate, BigDecimal total, String createdBy) {}
+    record Summary(Long id, String businessLine, String refNo, String clientName, String projectLocation, LocalDate quoteDate, BigDecimal total, String createdBy) {}
 
     /** Quotations this person may see: everything in the company, or only their own, depending on the role. */
     @GetMapping @Requires(module = AppModule.QUOTATIONS, right = Right.VIEW)
@@ -35,14 +35,18 @@ public class QuotationController {
         List<Quotation> rows = me.seesAllQuotations() ? repo.findByOwnerIdOrderByIdDesc(me.tenantId())
                 : repo.findByOwnerIdAndCreatedByOrderByIdDesc(me.tenantId(), me.userId());
         return rows.stream()
-                .map(q -> new Summary(q.getId(), q.getRefNo(), q.getClientName(), q.getProjectLocation(), q.getQuoteDate(), q.getTotal(),
+                .map(q -> new Summary(q.getId(), q.getBusinessLine(), q.getRefNo(), q.getClientName(), q.getProjectLocation(), q.getQuoteDate(), q.getTotal(),
                         q.getCreatedBy() == null ? "" : names.getOrDefault(q.getCreatedBy(), "")))
                 .toList();
     }
 
     /** Default PDF sections for a brand-new statement (not saved). */
     @GetMapping("/template") @Requires(module = AppModule.QUOTATIONS, right = Right.CREATE)
-    public List<QuoteSection> template(@AuthenticationPrincipal AuthUser me) { return templates.defaults(new Quotation(), me.tenantId()); }
+    public List<QuoteSection> template(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "SOLAR") String line) {
+        Quotation q = new Quotation();
+        q.setBusinessLine(BusinessLine.of(line).name());
+        return templates.defaults(q, me.tenantId());
+    }
 
     @GetMapping("/{id}") @Requires(module = AppModule.QUOTATIONS, right = Right.VIEW)
     public Quotation get(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) { return own(id, me); }
@@ -147,6 +151,7 @@ public class QuotationController {
 
     /** Copies editable fields; items and sections are re-created and image keys are checked. */
     private void apply(Quotation t, Quotation in, Long uid) {
+        t.setBusinessLine(BusinessLine.of(in.getBusinessLine()).name());
         t.setRefNo(in.getRefNo());
         t.setQuoteDate(in.getQuoteDate() == null ? LocalDate.now() : in.getQuoteDate());
         t.setClientName(in.getClientName());

@@ -5,4 +5,5 @@ import java.util.List;
 
 public interface SectionRepo extends JpaRepository<FixedSection, Long> {
     List<FixedSection> findByOwnerIdOrderByPosition(Long ownerId);
+    List<FixedSection> findByOwnerIdAndBusinessLineOrderByPosition(Long ownerId, String businessLine);
 }

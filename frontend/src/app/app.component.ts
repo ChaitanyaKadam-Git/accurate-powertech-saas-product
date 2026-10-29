@@ -30,6 +30,7 @@ function labelTables() {
               <div class="group">Administration</div>
               <a routerLink="/admin" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }"><app-icon name="shield" /><span>Overview</span></a>
               <a routerLink="/admin/users" routerLinkActive="on"><app-icon name="users" /><span>Users</span></a>
+              <a routerLink="/admin/access" routerLinkActive="on"><app-icon name="unlock" /><span>Grant access</span></a>
               <a routerLink="/admin/roles" routerLinkActive="on"><app-icon name="key" /><span>Roles &amp; rights</span></a>
               <a routerLink="/admin/activity" routerLinkActive="on"><app-icon name="activity" /><span>Activity log</span></a>
               <div class="group">Workspace</div>
@@ -37,6 +38,10 @@ function labelTables() {
             <a routerLink="/" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }"><app-icon name="dashboard" /><span>Dashboard</span></a>
             @if (auth.can('QUOTATIONS', 'VIEW')) { <a routerLink="/statements" routerLinkActive="on"><app-icon name="file" /><span>Statements</span></a> }
             @if (auth.can('QUOTATIONS', 'CREATE')) { <a routerLink="/quote/new" routerLinkActive="on"><app-icon name="plus" /><span>New statement</span></a> }
+            @if (auth.can('CUSTOMERS', 'VIEW')) {
+              <div class="group">Masters</div>
+              <a routerLink="/customers" routerLinkActive="on"><app-icon name="contact" /><span>Customers</span></a>
+            }
             <a routerLink="/settings" routerLinkActive="on"><app-icon name="settings" /><span>Settings</span></a>
           </nav>
         </aside>
@@ -105,11 +110,13 @@ export class AppComponent implements OnInit, OnDestroy {
     const u = this.router.url;
     if (u === '/' || u === '') return 'Dashboard';
     if (u.startsWith('/admin/users')) return 'Users';
+    if (u.startsWith('/admin/access')) return 'Grant access';
     if (u.startsWith('/admin/roles')) return 'Roles & rights';
     if (u.startsWith('/admin/activity')) return 'Activity log';
     if (u.startsWith('/admin')) return 'Administration';
     if (u.startsWith('/statements')) return 'Statements';
     if (u.startsWith('/quote')) return 'Statement';
+    if (u.startsWith('/customers')) return 'Customers';
     if (u.startsWith('/settings')) return 'Settings';
     return '';
   }
