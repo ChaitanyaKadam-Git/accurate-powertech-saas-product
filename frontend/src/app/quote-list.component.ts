@@ -16,20 +16,25 @@ import { IconComponent } from './icon.component';
     </div>
     <div class="card">
       <div class="toolbar">
-        <label class="grow-field">Search<input placeholder="Client, reference or location" [(ngModel)]="query" /></label>
+        <label class="grow-field">Search<input placeholder="Client, customer code, reference or location" [(ngModel)]="query" /></label>
         <label>Business line<select [(ngModel)]="lineF"><option value="">All lines</option>@for (l of lines; track l.key) { <option [value]="l.key">{{ l.label }}</option> }</select></label>
       </div>
       @if (shown.length === 0) { <p class="muted">No statements found.</p> }
       @else {
         <div class="scroll">
           <table>
-            <thead><tr><th>Ref</th><th>Line</th><th>Client</th><th>Location</th><th>Date</th><th class="r">Total (incl. GST)</th>@if (auth.isAdmin() || auth.can('QUOTATIONS','VIEW') && showOwner) { <th>Created by</th> }<th></th></tr></thead>
+            <thead><tr><th>Ref</th><th>Line</th><th>Date</th><th>Client</th><th>Customer code</th><th>Location</th><th class="r">Total (incl. GST)</th>@if (auth.isAdmin() || showOwner) { <th>Created by</th> }<th>Actions</th></tr></thead>
             <tbody>
               @for (r of shown; track r.id) {
                 <tr>
-                  <td>{{ r.refNo }}</td><td><span class="badge">{{ lineOf(r.businessLine).label }}</span></td><td>{{ r.clientName }}</td><td>{{ r.projectLocation }}</td>
-                  <td>{{ r.quoteDate | date: 'dd MMM yyyy' }}</td><td class="r">&#8377;{{ r.total | number: '1.2-2' }}</td>
-                  @if (auth.isAdmin() || showOwner) { <td>{{ r.createdBy }}</td> }
+                  <td><a [routerLink]="['/quote', r.id]">{{ r.refNo }}</a></td>
+                  <td><span class="badge">{{ lineOf(r.businessLine).label }}</span></td>
+                  <td>{{ r.quoteDate | date: 'dd MMM yyyy' }}</td>
+                  <td><b>{{ r.clientName || '-' }}</b></td>
+                  <td>@if (r.customerCode) { <a class="code" [routerLink]="['/customers', r.customerId]">{{ r.customerCode }}</a> } @else { - }</td>
+                  <td>{{ r.projectLocation || '-' }}</td>
+                  <td class="r"><b>&#8377;{{ r.total | number: '1.2-2' }}</b></td>
+                  @if (auth.isAdmin() || showOwner) { <td>{{ r.createdBy || '-' }}</td> }
                   <td class="actions">
                     <a [routerLink]="['/quote', r.id]">{{ auth.can('QUOTATIONS', 'EDIT') ? 'Edit' : 'Open' }}</a>
                     @if (auth.can('PDF', 'VIEW')) { <button class="link" (click)="api.preview(r.id)">Preview</button> }
@@ -63,7 +68,7 @@ export class QuoteListComponent implements OnInit {
   get shown() {
     const q = this.query.trim().toLowerCase();
     return this.rows.filter(r => (!this.lineF || (r.businessLine || 'SOLAR') === this.lineF)
-      && (!q || [r.refNo, r.clientName, r.projectLocation].some(v => (v || '').toLowerCase().includes(q))));
+      && (!q || [r.refNo, r.customerCode, r.clientName, r.projectLocation].some(v => (v || '').toLowerCase().includes(q))));
   }
 
   copy(id: number) { this.api.clone(id).subscribe(q => this.router.navigate(['/quote', q.id])); }

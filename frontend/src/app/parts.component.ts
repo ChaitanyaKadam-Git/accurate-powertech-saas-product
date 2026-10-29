@@ -36,17 +36,21 @@ const EMPTY: Part = { name: '', category: '', businessLine: 'BOTH', specificatio
       </div>
       @if (error) { <p class="error">{{ error }}</p> }
       <div class="scroll"><table>
-        <thead><tr><th>Part</th><th>Category / Make</th><th>Line</th><th class="r">Unit price</th><th>Used in</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Part</th><th>Category</th><th>Make</th><th>Line</th><th>Specification</th><th>UOM</th><th class="r">Unit price</th><th>HSN</th><th class="r">Used in</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           @for (p of shown; track p.id) {
             <tr>
-              <td class="w-main"><b>{{ p.name }}</b>@if (p.specification) { <br /><span class="muted small clip" [title]="p.specification">{{ p.specification }}</span> }</td>
-              <td>{{ p.category || '-' }}@if (p.make) { <br /><span class="muted small">{{ p.make }}</span> }</td>
+              <td><b>{{ p.name }}</b></td>
+              <td>{{ p.category || '-' }}</td>
+              <td>{{ p.make || '-' }}</td>
               <td><span class="badge">{{ lineLabel(p.businessLine) }}</span></td>
-              <td class="r nowrap">&#8377;{{ p.unitPrice | number: '1.2-2' }}<br /><span class="muted small">per {{ p.uom }}</span></td>
-              <td class="nowrap">{{ p.usedIn ? p.usedIn + ' product' + (p.usedIn > 1 ? 's' : '') : '-' }}</td>
+              <td><span class="clip" [title]="p.specification || ''">{{ p.specification || '-' }}</span></td>
+              <td>{{ p.uom }}</td>
+              <td class="r"><b>&#8377;{{ p.unitPrice | number: '1.2-2' }}</b></td>
+              <td>{{ p.hsnCode || '-' }}</td>
+              <td class="r">{{ p.usedIn ? p.usedIn + ' product' + (p.usedIn > 1 ? 's' : '') : '-' }}</td>
               <td><span class="badge" [class.ok]="p.active" [class.off]="!p.active">{{ p.active ? 'Active' : 'Inactive' }}</span></td>
-              <td class="actions stack-actions">
+              <td class="actions">
                 <button class="link" (click)="open(p)">{{ auth.can('PRODUCTS', 'EDIT') ? 'Edit' : 'View' }}</button>
                 @if (auth.can('PRODUCTS', 'DELETE')) { <button class="link danger" (click)="remove(p)">Delete</button> }
               </td>

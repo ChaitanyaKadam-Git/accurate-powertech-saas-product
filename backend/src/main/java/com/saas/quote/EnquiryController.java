@@ -32,7 +32,7 @@ public class EnquiryController {
     record StageChange(String stage, LocalDate date, String note, String lostReason, String orderNo, BigDecimal orderValue,
                        LocalDate warrantyUntil, LocalDate amcUntil) {}
     record Note(String kind, LocalDate date, String text, LocalDate nextFollowUp) {}
-    record Row(Long id, String refNo, String businessLine, Long customerId, String customerName, String city, String title,
+    record Row(Long id, String refNo, String businessLine, Long customerId, String customerCode, String customerName, String city, String title,
                BigDecimal capacity, String source, Long ownerId, String ownerName, String stage, String stageLabel, LocalDate stageDate,
                BigDecimal expectedValue, LocalDate nextFollowUp, BigDecimal orderValue, long quotationCount, Instant updatedAt) {}
     record QuoteRef(Long id, String refNo, LocalDate quoteDate, BigDecimal total) {}
@@ -99,7 +99,7 @@ public class EnquiryController {
         e.setRefNo(nextRef(me.tenantId()));
         apply(e, in, me);
         repo.save(e);
-        event(e, me, "CREATED", EnquiryStage.NEW.name(), LocalDate.now(), "Enquiry created: " + e.getTitle() + (e.getSource() == null ? "" : " (source: " + e.getSource() + ")"));
+        event(e, me, "CREATED", EnquiryStage.NEW.name(), LocalDate.now(), "Enquiry created for " + customers.findById(e.getCustomerId()).map(Customer::getCode).orElse("") + ": " + e.getTitle() + (e.getSource() == null ? "" : " (source: " + e.getSource() + ")"));
         audit.log(me, AppModule.CUSTOMERS, "CREATE", "Enquiry", e.getId(), e.getRefNo() + " " + e.getTitle());
         return get(me, e.getId());
     }
@@ -250,7 +250,7 @@ public class EnquiryController {
             if (q.getEnquiryId() != null) qcount.merge(q.getEnquiryId(), 1L, Long::sum);
         return list.stream().map(e -> {
             Customer c = cust.get(e.getCustomerId());
-            return new Row(e.getId(), e.getRefNo(), e.getBusinessLine(), e.getCustomerId(), c == null ? "" : c.getName(), c == null ? null : c.getCity(),
+            return new Row(e.getId(), e.getRefNo(), e.getBusinessLine(), e.getCustomerId(), c == null ? null : c.getCode(), c == null ? "" : c.getName(), c == null ? null : c.getCity(),
                     e.getTitle(), e.getCapacity(), e.getSource(), e.getOwnerId(), names.get(e.getOwnerId()), e.getStage(), stage(e).label, e.getStageDate(),
                     e.getExpectedValue(), e.getNextFollowUp(), e.getOrderValue(), qcount.getOrDefault(e.getId(), 0L), e.getUpdatedAt());
         }).toList();

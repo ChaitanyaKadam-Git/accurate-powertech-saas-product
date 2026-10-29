@@ -106,7 +106,7 @@ td.w-main { min-width:160px; }
 td.stack-actions { width:1%; }
 td.stack-actions button { display:block; margin:0 0 4px; }
 td.break { word-break:break-word; }
-.clip { display:inline-block; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
+.clip { display:inline-block; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
 
 /* ---------- tables ---------- */
 table { width:100%; border-collapse:collapse; }
@@ -239,6 +239,7 @@ details summary { cursor:pointer; font-weight:600; }
   table.cards td[data-label=""] { padding-left:0; }
   table.cards td[data-label=""]::before { display:none; }
   table.cards td:first-child { font-weight:600; }
+  table.cards td.actions a, table.cards td.actions button { width:auto; display:inline-flex; margin:0 6px 0 0; }
   table.cards td.actions { display:flex; flex-wrap:wrap; gap:4px; padding-left:0; text-align:left; border-top:1px solid var(--line); margin-top:4px; padding-top:10px; }
   table.cards td.actions::before { display:none; }
   table.cards td:empty { display:none; }
@@ -294,3 +295,70 @@ fieldset.plain:disabled { opacity:.75; }
 /* ---------- consistent spacing between stacked sections ---------- */
 main > .stats + .card, main > .card + .stats { margin-top:16px; }
 .grid2 > .card { margin:8px 0; }
+
+/* ================= visual system: boxes, backgrounds and spacing ================= */
+/* tables: shaded header, roomy rows, hover */
+table:not(.matrix) thead th { background:var(--bg); border-bottom:0; padding:11px 12px; }
+table:not(.matrix) thead th:first-child { border-radius:10px 0 0 10px; }
+table:not(.matrix) thead th:last-child { border-radius:0 10px 10px 0; }
+table:not(.matrix) td { padding:13px 12px; vertical-align:middle; }
+table:not(.matrix):not(.items) tbody tr { transition:background .12s; }
+table:not(.matrix):not(.items) tbody tr:hover { background:rgba(37,99,235,.045); }
+td a { font-weight:600; text-decoration:none; }
+td a:hover { text-decoration:underline; }
+
+/* row actions: small bordered buttons instead of bare underlined words */
+td.actions a, td.actions button.link, td button.link {
+  display:inline-flex; align-items:center; justify-content:center; gap:4px; min-height:30px; padding:4px 11px; margin:2px 4px 2px 0;
+  border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--primary); font-size:13px; font-weight:600; text-decoration:none;
+}
+td.actions a:hover, td.actions button.link:hover, td button.link:hover { background:rgba(37,99,235,.07); border-color:rgba(37,99,235,.35); text-decoration:none; filter:none; }
+td.actions .danger, td button.link.danger { color:var(--danger) !important; }
+td.actions .danger:hover, td button.link.danger:hover { background:rgba(220,38,38,.07); border-color:rgba(220,38,38,.35); }
+td.stack-actions a, td.stack-actions button { display:flex; width:100%; margin:0 0 6px; }
+
+/* key-value details: shaded tiles */
+.kv { grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px; }
+.kv > div { background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px 12px; min-width:0; }
+.kv small { margin-bottom:3px; font-size:11px; }
+.kv b { font-size:14px; }
+
+/* simple lists (statements of an enquiry, follow-ups) as boxed rows */
+.list-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 14px; margin:0 0 8px;
+  background:var(--bg); border:1px solid var(--line); border-radius:12px; }
+.list-row:hover { border-color:rgba(37,99,235,.35); }
+
+/* timeline entries as boxed items with a coloured edge */
+.timeline li { background:var(--bg); border:1px solid var(--line); border-left:3px solid var(--line); border-radius:12px; padding:11px 14px; margin:0 0 8px; }
+.timeline li.k-stage { border-left-color:var(--primary); }
+.timeline li.k-quotation { border-left-color:var(--ok); }
+.timeline li.k-call, .timeline li.k-visit { border-left-color:#f59e0b; }
+
+/* section headings inside cards get breathing room */
+.card-h { margin-bottom:18px; }
+.card > h3, .card > h4 { margin-bottom:12px; }
+.code { display:inline-block; font:600 12px ui-monospace, Menlo, Consolas, monospace; letter-spacing:.02em; color:var(--primary); background:rgba(37,99,235,.08); border:1px solid rgba(37,99,235,.2); border-radius:6px; padding:1px 7px; vertical-align:middle; }
+
+/* several row actions: a compact 2-column block */
+td.action-grid { width:176px; min-width:176px; }
+td.action-grid > a, td.action-grid > button { display:inline-flex; width:calc(50% - 4px); margin:2px; }
+.code { white-space:nowrap; }
+@media (max-width: 640px) { td.action-grid > a, td.action-grid > button { width:auto; min-width:0; } }
+
+/* ================= data tables: one line per row, scroll sideways when wider than the card ================= */
+.scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+.scroll::-webkit-scrollbar { height:8px; } .scroll::-webkit-scrollbar-thumb { background:var(--line); border-radius:8px; }
+table.data { width:100%; min-width:max-content; }
+table.data th, table.data td { white-space:nowrap; }
+table.data td br { display:none; }                                   /* secondary details stay on the same line */
+table.data td br + * { margin-left:8px; }
+table.data td .clip { max-width:260px; }
+table.data td.w-main { min-width:0; }
+/* first column stays visible while scrolling */
+table.data th:first-child, table.data td:first-child { position:sticky; left:0; z-index:1; background:var(--surface); }
+table.data thead th:first-child { background:var(--bg); }
+table.data tbody tr:hover td:first-child { background:#f6f8fd; }
+[data-theme='dark'] table.data tbody tr:hover td:first-child { background:#152038; }
+/* row actions in one row */
+table.data td.actions, table.data td.stack-actions, table.data td.action-grid { width:auto; min-width:0; white-space:nowrap; }
+table.data td.actions > a, table.data td.actions > button { display:inline-flex; width:auto; margin:0 6px 0 0; }

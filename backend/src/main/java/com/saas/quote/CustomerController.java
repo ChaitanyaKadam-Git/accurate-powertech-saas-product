@@ -21,7 +21,7 @@ public class CustomerController {
     static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     static final Pattern GSTIN = Pattern.compile("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$");
 
-    record Save(String name, String contactPerson, String phone, String email, String gstin, String address, String city, String notes) {}
+    record Save(String code, String name, String contactPerson, String phone, String email, String gstin, String address, String city, String notes) {}
 
     /** The statement form uses this list too, so quotation creators can read it without the CUSTOMERS module. */
     @GetMapping
@@ -42,7 +42,7 @@ public class CustomerController {
         c.setCreatedAt(Instant.now());
         apply(c, in, me);
         Customer saved = repo.save(c);
-        audit.log(me, AppModule.CUSTOMERS, "CREATE", "Customer", saved.getId(), saved.getName());
+        audit.log(me, AppModule.CUSTOMERS, "CREATE", "Customer", saved.getId(), saved.getCode() + " " + saved.getName());
         return saved;
     }
 
@@ -76,8 +76,8 @@ public class CustomerController {
         java.util.Set<Long> idset = new java.util.HashSet<>(eids);
         List<StatementRef> st = (me.seesAllQuotations() ? quotations.findByOwnerIdOrderByIdDesc(me.tenantId())
                         : quotations.findByOwnerIdAndCreatedByOrderByIdDesc(me.tenantId(), me.userId())).stream()
-                .filter(q -> (q.getEnquiryId() != null && idset.contains(q.getEnquiryId()))
-                        || (q.getEnquiryId() == null && q.getClientName() != null && q.getClientName().trim().equalsIgnoreCase(c.getName())))
+                .filter(q -> c.getId().equals(q.getCustomerId()) || (q.getEnquiryId() != null && idset.contains(q.getEnquiryId()))
+                        || (q.getCustomerId() == null && q.getEnquiryId() == null && q.getClientName() != null && q.getClientName().trim().equalsIgnoreCase(c.getName())))
                 .map(q -> new StatementRef(q.getId(), q.getRefNo(), q.getBusinessLine(), q.getQuoteDate(), q.getTotal(), q.getEnquiryId())).toList();
         return new History(c, eids, st);
     }
@@ -89,6 +89,13 @@ public class CustomerController {
     private void apply(Customer c, Save in, AuthUser me) {
         String name = trim(in.name());
         if (name == null) throw bad("Customer name is required");
+        String code = trim(in.code());
+        if (code == null) code = c.getCode() != null ? c.getCode() : nextCode(me.tenantId());
+        code = code.toUpperCase();
+        if (!code.matches("[A-Z0-9][A-Z0-9/_-]{0,19}")) throw bad("Customer code: up to 20 letters, digits, - / _");
+        String fc = code;
+        repo.findFirstByTenantIdAndCodeIgnoreCase(me.tenantId(), code).filter(x -> !x.getId().equals(c.getId()))
+                .ifPresent(x -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "Customer code " + fc + " is already used by " + x.getName()); });
         repo.findFirstByTenantIdAndNameIgnoreCase(me.tenantId(), name).filter(x -> !x.getId().equals(c.getId()))
                 .ifPresent(x -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "A customer named \"" + name + "\" already exists"); });
         String phone = trim(in.phone());
@@ -97,6 +104,7 @@ public class CustomerController {
         if (email != null && !EMAIL.matcher(email).matches()) throw bad("Enter a valid email address");
         String gstin = trim(in.gstin());
         if (gstin != null) { gstin = gstin.toUpperCase(); if (!GSTIN.matcher(gstin).matches()) throw bad("GSTIN must be 15 characters, for example 27ABCDE1234F1Z5"); }
+        c.setCode(code);
         c.setName(name);
         c.setContactPerson(trim(in.contactPerson()));
         c.setPhone(phone);
@@ -106,6 +114,15 @@ public class CustomerController {
         c.setCity(trim(in.city()));
         c.setNotes(trim(in.notes()));
         c.setUpdatedAt(Instant.now());
+    }
+
+    /** CUST-0001 style: one more than the highest automatic code of the company. */
+    private String nextCode(Long tenantId) {
+        int max = 0;
+        for (String k : repo.findAutoCodes(tenantId)) {
+            try { max = Math.max(max, Integer.parseInt(k.substring(5).trim())); } catch (NumberFormatException ignored) { }
+        }
+        return "CUST-" + String.format("%04d", max + 1);
     }
 
     private static String trim(String s) { return s == null || s.isBlank() ? null : s.trim(); }

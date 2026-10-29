@@ -14,7 +14,8 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
   imports: [ReactiveFormsModule, FormsModule, DecimalPipe, ImagePickerComponent, RouterLink],
   template: `
     <h2>{{ id ? 'Edit statement' : 'New statement' }} <span class="badge">{{ line.label }}</span>
-      @if (enquiryRef) { <a class="badge" [routerLink]="['/enquiries', form.value.enquiryId]">For {{ enquiryRef }}</a> }</h2>
+      @if (enquiryRef) { <a class="badge" [routerLink]="['/enquiries', form.value.enquiryId]">For {{ enquiryRef }}</a> }
+      @if (customerCode) { <a class="code" [routerLink]="['/customers', form.value.customerId]">{{ customerCode }}</a> }</h2>
 
     @if (!id) {
       <div class="card">
@@ -57,7 +58,7 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
           <label class="wide">Customer (fills in the client details below)
             <select (change)="pickCustomer($any($event.target).value)">
               <option value="">Select a saved customer</option>
-              @for (c of customers; track c.id) { <option [value]="c.id">{{ c.name }}{{ c.city ? ' - ' + c.city : '' }}</option> }
+              @for (c of customers; track c.id) { <option [value]="c.id">{{ c.code }} · {{ c.name }}{{ c.city ? ' - ' + c.city : '' }}</option> }
             </select>
           </label>
         }
@@ -218,11 +219,13 @@ export class QuoteFormComponent implements OnInit {
   get lineProducts() { return this.products.filter(p => p.active && p.businessLine === (this.form.value.businessLine || 'SOLAR')); }
   lines = LINES;
   enquiryRef = '';
+  get customerCode() { return this.customers.find(c => c.id === this.form.value.customerId)?.code ?? ''; }
   get line() { return lineOf(this.form.value.businessLine); }
 
   form = this.fb.nonNullable.group({
     businessLine: 'SOLAR',
     enquiryId: null as number | null,
+    customerId: null as number | null,
     refNo: '',
     quoteDate: localDate(),
     clientName: ['', Validators.required],
@@ -259,7 +262,7 @@ export class QuoteFormComponent implements OnInit {
     this.api.get(this.id).subscribe(q => {
       const { items, sections, ...rest } = q;
       this.form.patchValue(this.clean(rest));
-      this.form.patchValue({ enquiryId: q.enquiryId ?? null });
+      this.form.patchValue({ enquiryId: q.enquiryId ?? null, customerId: q.customerId ?? null });
       if (q.enquiryId) this.api.enquiry(q.enquiryId).subscribe({ next: d => (this.enquiryRef = d.enquiry.refNo ?? ''), error: () => (this.enquiryRef = '') });
       items.forEach(i => { this.items.push(this.newItem(i)); if (i.imageKey) this.loadPreview(i.imageKey); });
       this.setSections(sections);
@@ -362,7 +365,7 @@ export class QuoteFormComponent implements OnInit {
         const l = lineOf(d.enquiry.businessLine), c = d.customer;
         this.enquiryRef = d.enquiry.refNo ?? '';
         this.form.patchValue({
-          enquiryId: d.enquiry.id!, businessLine: l.key, gstPercent: l.gst, capacityKw: d.enquiry.capacity ?? l.capacity,
+          enquiryId: d.enquiry.id!, customerId: d.enquiry.customerId, businessLine: l.key, gstPercent: l.gst, capacityKw: d.enquiry.capacity ?? l.capacity,
           clientName: c?.name ?? '', clientAddress: c?.address ?? '', contactPerson: c?.contactPerson ?? '',
           phone: (c?.phone ?? '').replace(/\D/g, '').slice(0, 10), projectLocation: c?.city ?? '',
         });
@@ -416,7 +419,7 @@ export class QuoteFormComponent implements OnInit {
     const c = this.customers.find(x => String(x.id) === id);
     if (!c) return;
     this.form.patchValue({
-      clientName: c.name, clientAddress: c.address ?? '', contactPerson: c.contactPerson ?? '',
+      customerId: c.id ?? null, clientName: c.name, clientAddress: c.address ?? '', contactPerson: c.contactPerson ?? '',
       phone: (c.phone ?? '').replace(/\D/g, '').slice(0, 10), projectLocation: c.city ?? this.form.value.projectLocation ?? '',
     });
   }

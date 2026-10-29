@@ -17,6 +17,7 @@ public class Quotation {
     @JsonIgnore private Long createdBy;     // the person who created it (null on records made before roles existed)
 
     @Column(nullable = false, length = 20) private String businessLine = BusinessLine.SOLAR.name();   // SOLAR | GENSET
+    private Long customerId;                // the customer master record, when known
     private Long enquiryId;                 // the enquiry (customer flow) this statement was made for, if any
     private String refNo;
     private LocalDate quoteDate = LocalDate.now();

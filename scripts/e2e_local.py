@@ -398,9 +398,20 @@ cust = lambda token, body: call("POST", "/customers", token, body)
 s, c1 = cust(PRIYA, {"name": "Shree Sai Industries", "contactPerson": "Mr. Shinde", "phone": "9876500000", "email": "Purchase@ShreeSai.local",
                      "gstin": "27abcde1234f1z5", "address": "Plot 4, MIDC Chakan", "city": "Chakan", "notes": "Prefers Waaree panels"})
 check("manager adds a customer (GSTIN upper-cased, email lower-cased)", s == 200 and c1["gstin"] == "27ABCDE1234F1Z5" and c1["email"] == "purchase@shreesai.local", (s, c1))
+check("first customer gets code CUST-0001", c1["code"] == "CUST-0001", c1.get("code"))
 s, c2 = cust(SNEHA, {"name": "Patil Agro Foods", "phone": "9822000001", "city": "Baramati"})
 check("sales exec adds a customer", s == 200)
 s, c3 = cust(PRIYA, {"name": "Metro Hospital", "city": "Kothrud"})
+check("codes run on: CUST-0002, CUST-0003", c2["code"] == "CUST-0002" and c3["code"] == "CUST-0003", (c2.get("code"), c3.get("code")))
+s, cc = cust(PRIYA, {"name": "Custom Code Co", "code": "pune-key-01"})
+check("own code accepted (upper-cased)", s == 200 and cc["code"] == "PUNE-KEY-01")
+check("duplicate code refused (case-insensitive)", cust(PRIYA, {"name": "Another", "code": "Pune-Key-01"})[0] == 409)
+check("invalid code refused", cust(PRIYA, {"name": "Bad code", "code": "a b c"})[0] == 400)
+s, c4 = cust(PRIYA, {"name": "After custom"})
+check("automatic codes ignore custom ones", s == 200 and c4["code"] == "CUST-0004", c4.get("code"))
+s, ed = call("PUT", f"/customers/{c1['id']}", PRIYA, {"name": "Shree Sai Industries", "city": "Chakan"})
+check("edit without a code keeps the code", s == 200 and ed["code"] == "CUST-0001")
+call("DELETE", f"/customers/{cc['id']}", PRIYA); call("DELETE", f"/customers/{c4['id']}", PRIYA)
 check("duplicate name refused (case-insensitive)", cust(PRIYA, {"name": "shree sai industries"})[0] == 409)
 check("missing name refused", cust(PRIYA, {"name": "  "})[0] == 400)
 check("bad phone refused", cust(PRIYA, {"name": "X1", "phone": "98-765"})[0] == 400)
@@ -420,7 +431,7 @@ REENA = first_login("reena@accuratepowertech.local", ru["tempPassword"], "Welcom
 check("no CUSTOMERS rights and no quotation create/edit: list refused", call("GET", "/customers", REENA)[0] == 403)
 check("no CUSTOMERS rights: create refused", cust(REENA, {"name": "Y"})[0] == 403)
 s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "CUSTOMERS", "size": 200})
-check("customer changes in the audit trail (3 create, 1 edit, 1 delete)", s == 200 and sorted(x["action"] for x in a["items"]) == ["CREATE", "CREATE", "CREATE", "DELETE", "EDIT"], [x["action"] for x in a["items"]] if s == 200 else s)
+check("customer changes in the audit trail (5 create, 2 edit, 3 delete)", s == 200 and sorted(x["action"] for x in a["items"]) == ["CREATE"] * 5 + ["DELETE"] * 3 + ["EDIT"] * 2, [x["action"] for x in a["items"]] if s == 200 else s)
 
 # ---------------------------------------------------------------- 11c. Masters > Parts and Products
 print("\n== Parts")
@@ -527,6 +538,7 @@ s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PRODUCTS",
 check("parts and products in the audit trail", s == 200 and {"Part", "Product"} <= {x["entityType"] for x in a["items"]} and any("99000" in (x["detail"] or "") for x in a["items"]))
 
 # ---------------------------------------------------------------- 11d. Customer flow (enquiry -> order -> commissioning)
+OTHER_T = call("POST", "/auth/register", body={"email": "early@othersolar.local", "password": "Other@2026x", "companyName": "Early Other"})[1]["token"]
 print("\n== Customer flow")
 import datetime as _dt
 td = _dt.date.today(); iso = lambda d: d.isoformat()
@@ -556,6 +568,15 @@ check("future stage date refused", call("POST", f"/enquiries/{E1}/stage", AMIT, 
 s, qe = call("POST", "/quotations", AMIT, {"businessLine": "GENSET", "enquiryId": E1, "clientName": "Metro Hospital", "capacityKw": 125, "gstPercent": 18,
              "items": [{"equipment": "125 kVA DG set", "qty": 1, "unitPrice": 1250000}]})
 check("statement linked to the enquiry", s == 200 and qe["enquiryId"] == E1)
+check("statement takes the enquiry's customer", qe["customerId"] == cmetro["id"])
+s, qp = call("POST", "/quotations", PRIYA, {"clientName": "Picked customer", "customerId": c1["id"]})
+check("statement with a picked customer", s == 200 and qp["customerId"] == c1["id"])
+s, ql = call("GET", "/quotations", PRIYA)
+check("statement list shows the customer code", next(x for x in ql if x["id"] == qp["id"])["customerCode"] == "CUST-0001")
+check("customer of another company refused", call("POST", "/quotations", OTHER_T, {"clientName": "x", "customerId": c1["id"]})[0] == 400)
+call("DELETE", f"/quotations/{qp['id']}", ADMIN)
+check("enquiry rows carry the customer code", next(x for x in call("GET", "/enquiries", PRIYA)[1] if x["id"] == E1)["customerCode"] == cmetro["code"])
+
 s, d = call("GET", f"/enquiries/{E1}", AMIT)
 check("first statement moves the enquiry to 'Quotation sent'", d["enquiry"]["stage"] == "QUOTED" and d["quotations"][0]["id"] == qe["id"]
       and any(x["kind"] == "QUOTATION" for x in d["events"]))

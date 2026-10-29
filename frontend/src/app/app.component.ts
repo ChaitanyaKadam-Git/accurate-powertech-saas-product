@@ -4,8 +4,13 @@ import { AuthService } from './auth';
 import { BrandService } from './brand';
 import { IconComponent } from './icon.component';
 
+/**
+ * Data tables get class "data" (one line per row, scroll sideways). Item editors (table.items) instead become labelled
+ * cards on phones: every cell gets its column header as data-label (styles.css, "small screens").
+ */
 function labelTables() {
-  document.querySelectorAll<HTMLTableElement>('main table:not(.matrix)').forEach(t => {
+  document.querySelectorAll<HTMLTableElement>('main table:not(.matrix):not(.items), .modal table:not(.matrix):not(.items)').forEach(t => t.classList.add('data'));
+  document.querySelectorAll<HTMLTableElement>('main table.items, .modal table.items').forEach(t => {
     const heads = Array.from(t.querySelectorAll('thead th'), th => th.textContent?.trim() ?? '');
     t.classList.add('cards');
     t.querySelectorAll('tbody tr').forEach(tr =>

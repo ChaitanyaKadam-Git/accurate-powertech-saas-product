@@ -20,7 +20,7 @@ const KIND: Record<string, string> = { CREATED: 'Created', STAGE: 'Stage', CALL:
         <div>
           <h1>{{ d.enquiry.refNo }} <span class="badge">{{ lineOf(d.enquiry.businessLine).label }}</span>
             <span class="badge" [class.ok]="won" [class.off]="d.enquiry.stage === 'LOST'">{{ d.stageLabel }}</span></h1>
-          <p class="muted">{{ d.enquiry.title }} · <a [routerLink]="['/customers', d.enquiry.customerId]">{{ d.customer?.name }}</a>@if (d.customer?.city) { , {{ d.customer?.city }} } · Owner: {{ d.ownerName || '-' }}</p>
+          <p class="muted">{{ d.enquiry.title }} · <a [routerLink]="['/customers', d.enquiry.customerId]">{{ d.customer?.name }}</a> <span class="code">{{ d.customer?.code }}</span>@if (d.customer?.city) { , {{ d.customer?.city }} } · Owner: {{ d.ownerName || '-' }}</p>
         </div>
         <div>
           @if (canEdit && next) { <button (click)="openMove(next.key)"><app-icon name="check" [size]="18" /> {{ next.label }}</button> }
@@ -52,11 +52,11 @@ const KIND: Record<string, string> = { CREATED: 'Created', STAGE: 'Stage', CALL:
         }
       </div>
 
-      <div class="grid2">
+      <div>
         <div class="card">
           <div class="card-h"><div><h3>Details</h3></div>@if (canEdit) { <button class="ghost" (click)="openEdit()">Edit</button> }</div>
           <div class="kv">
-            <div><small>Customer</small><b><a [routerLink]="['/customers', d.enquiry.customerId]">{{ d.customer?.name }}</a></b></div>
+            <div><small>Customer</small><b><a [routerLink]="['/customers', d.enquiry.customerId]">{{ d.customer?.name }}</a></b><br /><span class="code">{{ d.customer?.code }}</span></div>
             <div><small>Contact</small><b>{{ contactLine || '-' }}</b></div>
             <div><small>Capacity</small><b>{{ d.enquiry.capacity != null ? (d.enquiry.capacity | number: '1.0-2') + ' ' + lineOf(d.enquiry.businessLine).unit : '-' }}</b></div>
             <div><small>Source</small><b>{{ d.enquiry.source || '-' }}</b></div>
@@ -76,7 +76,7 @@ const KIND: Record<string, string> = { CREATED: 'Created', STAGE: 'Stage', CALL:
         <div class="card">
           <div class="card-h"><div><h3>Statements ({{ d.quotations.length }})</h3><p>Quotations made for this enquiry.</p></div></div>
           @for (q of d.quotations; track q.id) {
-            <div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">
+            <div class="list-row">
               <a [routerLink]="['/quote', q.id]"><b>{{ q.refNo }}</b></a><span class="muted small">{{ q.quoteDate | date: 'dd MMM yyyy' }}</span><b>&#8377;{{ q.total | number: '1.0-0' }}</b>
             </div>
           }

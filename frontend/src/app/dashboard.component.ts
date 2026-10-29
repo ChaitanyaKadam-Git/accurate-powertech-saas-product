@@ -27,7 +27,7 @@ import { IconComponent } from './icon.component';
         @if (flow.followUps.length) {
           <h4 style="margin:16px 0 6px">Follow-ups due ({{ flow.followUps.length }})</h4>
           @for (e of flow.followUps.slice(0, 6); track e.id) {
-            <div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">
+            <div class="list-row">
               <a [routerLink]="['/enquiries', e.id]"><b>{{ e.refNo }}</b> {{ e.customerName }}</a><span class="small">{{ e.title }}</span>
               <span class="badge off">{{ e.nextFollowUp | date: 'dd MMM' }}</span>
             </div>

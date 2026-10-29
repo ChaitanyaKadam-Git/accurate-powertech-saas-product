@@ -35,7 +35,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
         </div>
       </div>
       <div class="toolbar">
-        <label class="grow-field">Search<input placeholder="Ref, customer, requirement, city" [(ngModel)]="q" /></label>
+        <label class="grow-field">Search<input placeholder="Ref, customer code or name, requirement, city" [(ngModel)]="q" /></label>
         <label>Business line<select [(ngModel)]="lineF"><option value="">All lines</option>@for (l of lines; track l.key) { <option [value]="l.key">{{ l.label }}</option> }</select></label>
         @if (owners.length > 1) {
           <label>Owner<select [(ngModel)]="ownerF"><option [ngValue]="null">Everyone</option>@for (o of owners; track o.id) { <option [ngValue]="o.id">{{ o.name }}</option> }</select></label>
@@ -55,7 +55,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
               @for (e of inStage(s.key); track e.id) {
                 <a class="ecard" [routerLink]="['/enquiries', e.id]">
                   <small class="muted">{{ e.refNo }} · {{ lineOf(e.businessLine).label }}</small>
-                  <b>{{ e.customerName }}</b>
+                  <b>{{ e.customerName }}</b>@if (e.customerCode) { <span class="code" style="align-self:flex-start">{{ e.customerCode }}</span> }
                   <span class="small">{{ e.title }}</span>
                   <span class="small muted">{{ e.ownerName || '-' }}@if (e.expectedValue || e.orderValue) { · &#8377;{{ (e.orderValue || e.expectedValue) | number: '1.0-0' }} }</span>
                   @if (e.nextFollowUp && open(e)) { <span class="badge" [class.off]="due(e)">Follow-up {{ e.nextFollowUp | date: 'dd MMM' }}</span> }
@@ -66,17 +66,22 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
         </div>
       } @else {
         <div class="scroll"><table>
-          <thead><tr><th>Enquiry</th><th>Customer</th><th>Stage</th><th>Owner</th><th class="r">Value</th><th>Follow-up</th><th></th></tr></thead>
+          <thead><tr><th>Ref</th><th>Line</th><th>Customer code</th><th>Customer</th><th>City</th><th>Requirement</th><th>Stage</th><th>Since</th><th>Owner</th><th class="r">Value</th><th>Follow-up</th><th>Actions</th></tr></thead>
           <tbody>
             @for (e of shown; track e.id) {
               <tr>
-                <td class="w-main"><b>{{ e.refNo }}</b> <span class="badge">{{ lineOf(e.businessLine).label }}</span><br /><span class="small">{{ e.title }}</span></td>
-                <td>{{ e.customerName }}@if (e.city) { <br /><span class="muted small">{{ e.city }}</span> }</td>
-                <td><span class="badge" [class.ok]="won(e)" [class.off]="e.stage === 'LOST'">{{ e.stageLabel }}</span><br /><span class="muted small">{{ e.stageDate | date: 'dd MMM yyyy' }}</span></td>
+                <td><a [routerLink]="['/enquiries', e.id]">{{ e.refNo }}</a></td>
+                <td><span class="badge">{{ lineOf(e.businessLine).label }}</span></td>
+                <td>@if (e.customerCode) { <a class="code" [routerLink]="['/customers', e.customerId]">{{ e.customerCode }}</a> } @else { - }</td>
+                <td><b>{{ e.customerName }}</b></td>
+                <td>{{ e.city || '-' }}</td>
+                <td><span class="clip" [title]="e.title">{{ e.title }}</span></td>
+                <td><span class="badge" [class.ok]="won(e)" [class.off]="e.stage === 'LOST'">{{ e.stageLabel }}</span></td>
+                <td>{{ e.stageDate | date: 'dd MMM yyyy' }}</td>
                 <td>{{ e.ownerName || '-' }}</td>
-                <td class="r nowrap">@if (e.orderValue || e.expectedValue) { &#8377;{{ (e.orderValue || e.expectedValue) | number: '1.0-0' }} } @else { - }</td>
-                <td class="nowrap">@if (e.nextFollowUp && open(e)) { <span class="badge" [class.off]="due(e)">{{ e.nextFollowUp | date: 'dd MMM yyyy' }}</span> } @else { - }</td>
-                <td class="actions stack-actions"><a [routerLink]="['/enquiries', e.id]">Open</a></td>
+                <td class="r">@if (e.orderValue || e.expectedValue) { &#8377;{{ (e.orderValue || e.expectedValue) | number: '1.0-0' }} } @else { - }</td>
+                <td>@if (e.nextFollowUp && open(e)) { <span class="badge" [class.off]="due(e)">{{ e.nextFollowUp | date: 'dd MMM yyyy' }}</span> } @else { - }</td>
+                <td class="actions"><a [routerLink]="['/enquiries', e.id]">Open</a></td>
               </tr>
             }
           </tbody>
@@ -94,7 +99,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
         </div>
         <div class="grid">
           <label class="wide"><span>Customer <span class="req">*</span></span>
-            <select [(ngModel)]="f.customerId"><option [ngValue]="null">Select a customer</option>@for (c of customers; track c.id) { <option [ngValue]="c.id">{{ c.name }}{{ c.city ? ' - ' + c.city : '' }}</option> }</select>
+            <select [(ngModel)]="f.customerId"><option [ngValue]="null">Select a customer</option>@for (c of customers; track c.id) { <option [ngValue]="c.id">{{ c.code }} · {{ c.name }}{{ c.city ? ' - ' + c.city : '' }}</option> }</select>
             <span class="hint">Not in the list? <a routerLink="/customers" (click)="f = null">Add the customer</a> first.</span>
           </label>
           <label class="wide"><span>Requirement <span class="req">*</span></span><input [(ngModel)]="f.title" [placeholder]="f.businessLine === 'GENSET' ? 'e.g. 125 kVA DG set for hospital backup' : 'e.g. 50 kWp rooftop on-grid system'" /></label>
@@ -137,7 +142,7 @@ export class EnquiriesComponent implements OnInit {
     return this.rows.filter(e =>
       (!this.lineF || e.businessLine === this.lineF) && (!this.stageF || e.stage === this.stageF) &&
       (this.ownerF == null || e.ownerId === this.ownerF) && (!this.dueOnly || (this.open(e) && this.due(e))) &&
-      (!q || [e.refNo, e.customerName, e.title, e.city, e.source].some(v => (v || '').toLowerCase().includes(q))));
+      (!q || [e.refNo, e.customerCode, e.customerName, e.title, e.city, e.source].some(v => (v || '').toLowerCase().includes(q))));
   }
   inStage(key: string) { return this.shown.filter(e => e.stage === key); }
 

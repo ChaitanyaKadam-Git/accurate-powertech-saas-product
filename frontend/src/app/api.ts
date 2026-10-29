@@ -35,7 +35,7 @@ export interface Enquiry {
   commissioningDate?: string | null; warrantyUntil?: string | null; amcUntil?: string | null; notes: string; createdAt?: string; updatedAt?: string;
 }
 export interface EnquiryRow {
-  id: number; refNo: string; businessLine: string; customerId: number; customerName: string; city: string | null; title: string;
+  id: number; refNo: string; businessLine: string; customerId: number; customerCode: string | null; customerName: string; city: string | null; title: string;
   capacity: number | null; source: string | null; ownerId: number | null; ownerName: string | null; stage: string; stageLabel: string;
   stageDate: string | null; expectedValue: number | null; nextFollowUp: string | null; orderValue: number | null; quotationCount: number; updatedAt: string;
 }
@@ -52,20 +52,20 @@ export interface QSection {
   visible: boolean; imageColumns: number; imageKeys: string[];
 }
 export interface Quote {
-  id?: number; businessLine: string; enquiryId?: number | null; refNo: string; quoteDate: string; clientName: string; clientAddress: string;
+  id?: number; businessLine: string; enquiryId?: number | null; customerId?: number | null; refNo: string; quoteDate: string; clientName: string; clientAddress: string;
   contactPerson: string; phone: string; projectLocation: string; capacityKw: number; gstPercent: number;
   showItemPrices: boolean; sections: QSection[];
   coverImageKey: string; signatoryName: string; signatoryTitle: string; signatoryPhone: string; signatoryEmail: string;
   items: Item[];
 }
-export interface Summary { id: number; businessLine: string; enquiryId?: number | null; refNo: string; clientName: string; projectLocation: string; quoteDate: string; total: number; createdBy: string; }
+export interface Summary { id: number; businessLine: string; enquiryId?: number | null; customerId?: number | null; customerCode?: string | null; refNo: string; clientName: string; projectLocation: string; quoteDate: string; total: number; createdBy: string; }
 export interface Section { id: number; sectionKey: string; businessLine?: string; title: string; content: string; }
 export interface Company {
   companyName: string; address: string; logoKey: string | null; coverImageKey: string | null; diagramImageKey: string | null;
   signatoryName: string; signatoryTitle: string; signatoryPhone: string; signatoryEmail: string;
 }
 export interface Customer {
-  id?: number; name: string; contactPerson: string; phone: string; email: string; gstin: string;
+  id?: number; code?: string; name: string; contactPerson: string; phone: string; email: string; gstin: string;
   address: string; city: string; notes: string; createdAt?: string; updatedAt?: string;
 }
 /** Masters > Parts. businessLine is SOLAR, GENSET or BOTH. */
