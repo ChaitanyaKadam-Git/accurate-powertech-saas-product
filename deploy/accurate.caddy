@@ -1,0 +1,9 @@
+# Accurate Powertech. Copied to /opt/occpl/extra/accurate.caddy on the OCCPL dev server; the platform Caddyfile
+# imports /etc/caddy/extra/*.caddy. The certificate is issued automatically once the DNS record points here.
+accurate.occplsoftech.com {
+	encode zstd gzip
+	request_body {
+		max_size 25MB
+	}
+	reverse_proxy accurate-frontend:80
+}
