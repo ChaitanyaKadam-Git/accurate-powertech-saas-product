@@ -2,7 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Api, CatalogEntry, Customer, Item, LINES, Product, QSection, Summary, lineOf } from './api';
+import { Api, CatalogEntry, Customer, Item, LINES, Part, Product, QSection, Summary, lineOf } from './api';
 import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
 
@@ -149,7 +149,15 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
             </select>
           </label>
         }
-        <p class="hint">Type an equipment name you used before and pick it from the list to fill in the rest.</p>
+        @if (lineParts.length && canSave) {
+          <label>Add a part
+            <select #partSel (change)="addPart(partSel.value); partSel.value = ''">
+              <option value="">Select a {{ line.label }} part</option>
+              @for (p of lineParts; track p.id) { <option [value]="p.id">{{ p.category ? p.category + ': ' : '' }}{{ p.name }}{{ p.make ? ' (' + p.make + ')' : '' }}</option> }
+            </select>
+          </label>
+        }
+        <p class="hint">Or type an equipment name: parts from the master and items used before are suggested and fill in the rest.</p>
         <div class="scroll">
           <table class="items">
             <thead><tr><th>#</th><th>Equipment</th><th>Specification</th><th>Make</th><th>UOM</th><th>Qty</th><th>Unit price</th><th class="r">Amount</th><th>Photo</th><th></th></tr></thead>
@@ -204,6 +212,8 @@ export class QuoteFormComponent implements OnInit {
   previous: Summary[] = [];
   customers: Customer[] = [];
   products: Product[] = [];
+  masterParts: Part[] = [];
+  get lineParts() { const l = this.form.value.businessLine || 'SOLAR'; return this.masterParts.filter(p => p.active && (p.businessLine === 'BOTH' || p.businessLine === l)); }
   get lineProducts() { return this.products.filter(p => p.active && p.businessLine === (this.form.value.businessLine || 'SOLAR')); }
   lines = LINES;
   get line() { return lineOf(this.form.value.businessLine); }
@@ -228,9 +238,11 @@ export class QuoteFormComponent implements OnInit {
   get total() { return this.subtotal + this.gst; }
 
   ngOnInit() {
-    this.api.catalog().subscribe(c => (this.catalog = c));
+    this.api.catalog().subscribe(c => { this.history = c; this.mergeCatalog(); });
     this.api.customers().subscribe({ next: c => (this.customers = c), error: () => (this.customers = []) });
     this.api.products().subscribe({ next: p => (this.products = p), error: () => (this.products = []) });
+    // master parts first in the equipment suggestions, then items used in earlier statements
+    this.api.parts().subscribe({ next: p => { this.masterParts = p; this.mergeCatalog(); }, error: () => (this.masterParts = []) });
     const p = this.route.snapshot.paramMap.get('id');
     if (!p) {
       this.api.list().subscribe(l => (this.previous = l));
@@ -344,6 +356,22 @@ export class QuoteFormComponent implements OnInit {
     const l = lineOf(key);
     this.form.patchValue({ businessLine: l.key, gstPercent: l.gst, capacityKw: l.capacity });
     this.api.template(l.key).subscribe(t => this.setSections(t));
+  }
+
+  private history: CatalogEntry[] = [];
+  private mergeCatalog() {
+    const fromMaster: CatalogEntry[] = this.masterParts.filter(p => p.active).map(p => ({
+      equipment: p.name, specification: p.specification, make: p.make, uom: p.uom, unitPrice: p.unitPrice, imageKey: p.imageKey }));
+    const seen = new Set(fromMaster.map(e => e.equipment.trim().toLowerCase()));
+    this.catalog = [...fromMaster, ...this.history.filter(e => !seen.has(e.equipment.trim().toLowerCase()))];
+  }
+
+  /** Parts master -> one item with the part's current details and price. */
+  addPart(id: string) {
+    const p = this.masterParts.find(x => String(x.id) === id);
+    if (!p) return;
+    this.items.push(this.newItem({ equipment: p.name, specification: p.specification ?? '', make: p.make ?? '', uom: p.uom || 'Nos.', qty: 1, unitPrice: Number(p.unitPrice) || 0, imageKey: p.imageKey }));
+    if (p.imageKey) this.loadPreview(p.imageKey);
   }
 
   /** Product master -> every part becomes an item; an empty statement also takes the product's capacity. */

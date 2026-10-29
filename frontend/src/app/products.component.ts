@@ -1,19 +1,20 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Api, LINES, Product, ProductPart, lineOf } from './api';
+import { RouterLink } from '@angular/router';
+import { Api, LINES, Part, Product, ProductPart, lineOf } from './api';
 import { AuthService } from './auth';
 import { IconComponent } from './icon.component';
 
-const emptyPart = (): ProductPart => ({ name: '', specification: '', make: '', uom: 'Nos.', qty: 1, unitPrice: 0, imageKey: null });
+const emptyPart = (): ProductPart => ({ partId: null, qty: 1 });
 
 /** Masters > Products: Genset / Solar setups and their parts. A statement can pull in every part of a product at once. */
 @Component({
   standalone: true,
-  imports: [FormsModule, DecimalPipe, DatePipe, IconComponent],
+  imports: [FormsModule, DecimalPipe, DatePipe, IconComponent, RouterLink],
   template: `
     <div class="page-h">
-      <div><h1>Products</h1><p class="muted">Genset and solar setups with their parts. In a statement, "Add product" copies all parts into the items.</p></div>
+      <div><h1>Products</h1><p class="muted">Genset and solar setups built from the <a routerLink="/parts">Parts</a> master. In a statement, "Add a product" copies all its parts into the items.</p></div>
       @if (auth.can('PRODUCTS', 'CREATE')) { <button (click)="open()"><app-icon name="plus" [size]="18" /> Add product</button> }
     </div>
 
@@ -70,26 +71,25 @@ const emptyPart = (): ProductPart => ({ name: '', specification: '', make: '', u
           <div class="row" style="margin-top:16px"><h3>Parts ({{ named }})</h3>
             @if (editable) { <button type="button" (click)="f.parts.push(newPart())"><app-icon name="plus" [size]="16" /> Add part</button> }
           </div>
-          @if (editable) {
-            <details style="margin:6px 0 10px"><summary>Paste parts from Excel</summary>
-              <p class="hint">Columns: part, specification, make, UOM, qty, unit price.</p>
-              <textarea rows="4" [(ngModel)]="paste"></textarea>
-              <button type="button" class="ghost" (click)="importPaste()">Add pasted rows</button>
-            </details>
-          }
+          <p class="hint">Pick parts from the <a routerLink="/parts" (click)="f = null">Parts</a> master ({{ choices.length }} available for {{ lineOf(f.businessLine).label }}). Prices come from the master.</p>
           <div class="scroll"><table class="items">
-            <thead><tr><th>#</th><th>Part</th><th>Specification</th><th>Make</th><th>UOM</th><th>Qty</th><th>Unit price</th><th class="r">Amount</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Part</th><th>Make</th><th>UOM</th><th>Qty</th><th class="r">Unit price</th><th class="r">Amount</th><th></th></tr></thead>
             <tbody>
               @for (x of f.parts; track x; let i = $index) {
                 <tr>
                   <td>{{ i + 1 }}</td>
-                  <td><input [(ngModel)]="x.name" placeholder="Part name" /></td>
-                  <td><textarea rows="1" [(ngModel)]="x.specification"></textarea></td>
-                  <td><input [(ngModel)]="x.make" /></td>
-                  <td><input class="s" [(ngModel)]="x.uom" /></td>
-                  <td><input class="s" type="number" min="0" [(ngModel)]="x.qty" /></td>
-                  <td><input class="m" type="number" min="0" [(ngModel)]="x.unitPrice" /></td>
-                  <td class="r nowrap">{{ (x.qty || 0) * (x.unitPrice || 0) | number: '1.2-2' }}</td>
+                  <td>
+                    <select [(ngModel)]="x.partId" [ngModelOptions]="{ standalone: true }" class="part-pick">
+                      <option [ngValue]="null">Select a part</option>
+                      @for (c of choicesFor(x); track c.id) { <option [ngValue]="c.id">{{ c.name }}{{ c.make ? ' (' + c.make + ')' : '' }}{{ c.active ? '' : ' - inactive' }}</option> }
+                    </select>
+                    @if (master(x)?.specification) { <div class="muted small">{{ master(x)?.specification }}</div> }
+                  </td>
+                  <td>{{ master(x)?.make || '-' }}</td>
+                  <td>{{ master(x)?.uom || '-' }}</td>
+                  <td><input class="s" type="number" min="0" [(ngModel)]="x.qty" [ngModelOptions]="{ standalone: true }" /></td>
+                  <td class="r nowrap">{{ (master(x)?.unitPrice ?? 0) | number: '1.2-2' }}</td>
+                  <td class="r nowrap">{{ (x.qty || 0) * (master(x)?.unitPrice ?? 0) | number: '1.2-2' }}</td>
                   <td>@if (editable) { <button type="button" class="link danger" (click)="f.parts.splice(i, 1)">Remove</button> }</td>
                 </tr>
               }
@@ -114,21 +114,27 @@ export class ProductsComponent implements OnInit {
   rows: Product[] = [];
   q = ''; lineF = ''; statusF = ''; error = ''; loaded = false;
   f: Product | null = null;
-  formError = ''; busy = false; paste = '';
+  formError = ''; busy = false;
+  allParts: Part[] = [];
 
   get editable() { return this.f?.id ? this.auth.can('PRODUCTS', 'EDIT') : this.auth.can('PRODUCTS', 'CREATE'); }
-  get named() { return this.f?.parts.filter(x => x.name.trim()).length ?? 0; }
-  get total() { return (this.f?.parts ?? []).reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.unitPrice) || 0), 0); }
+  get named() { return this.f?.parts.filter(x => x.partId).length ?? 0; }
+  get total() { return (this.f?.parts ?? []).reduce((s, x) => s + (Number(x.qty) || 0) * (Number(this.master(x)?.unitPrice) || 0), 0); }
+  /** Active master parts this product's line may use. */
+  get choices() { const l = this.f?.businessLine; return this.allParts.filter(p => p.active && (p.businessLine === 'BOTH' || p.businessLine === l)); }
+  /** The choices plus the part already on this row (so an inactive or other-line part still shows). */
+  choicesFor(x: ProductPart) { const cur = this.master(x); return cur && !this.choices.includes(cur) ? [cur, ...this.choices] : this.choices; }
+  master(x: ProductPart) { return this.allParts.find(p => p.id === x.partId); }
   count(line: string) { return this.rows.filter(p => p.businessLine === line).length; }
   get shown() {
     const q = this.q.trim().toLowerCase();
     return this.rows.filter(p =>
       (!this.lineF || p.businessLine === this.lineF) &&
       (!this.statusF || (this.statusF === 'active') === p.active) &&
-      (!q || [p.name, p.code, p.description, ...p.parts.flatMap(x => [x.name, x.make])].some(v => (v || '').toLowerCase().includes(q))));
+      (!q || [p.name, p.code, p.description, ...p.parts.flatMap(x => [x.name ?? '', x.make ?? ''])].some(v => (v || '').toLowerCase().includes(q))));
   }
 
-  ngOnInit() { this.load(); }
+  ngOnInit() { this.load(); this.api.parts().subscribe(p => (this.allParts = p)); }
   load() {
     this.api.products().subscribe({
       next: r => { this.rows = r; this.loaded = true; },
@@ -139,9 +145,9 @@ export class ProductsComponent implements OnInit {
   newPart() { return emptyPart(); }
 
   open(p?: Product) {
-    this.formError = ''; this.paste = '';
+    this.formError = '';
     this.f = p
-      ? { ...p, code: p.code ?? '', description: p.description ?? '', parts: p.parts.map(x => ({ ...x, specification: x.specification ?? '', make: x.make ?? '', uom: x.uom ?? 'Nos.' })) }
+      ? { ...p, code: p.code ?? '', description: p.description ?? '', parts: p.parts.map(x => ({ partId: x.partId, qty: x.qty })) }
       : { businessLine: this.lineF || 'GENSET', name: '', code: '', capacity: null, description: '', active: true, parts: [emptyPart()] };
   }
 
@@ -150,22 +156,11 @@ export class ProductsComponent implements OnInit {
     this.f = null;
   }
 
-  importPaste() {
-    if (!this.f) return;
-    const rows = this.paste.split('\n').map(l => l.split('\t')).filter(c => c[0]?.trim());
-    if (this.f.parts.length === 1 && !this.f.parts[0].name.trim()) this.f.parts = [];
-    rows.forEach(c => this.f!.parts.push({
-      name: c[0].trim(), specification: c[1]?.trim() ?? '', make: c[2]?.trim() ?? '', uom: c[3]?.trim() || 'Nos.',
-      qty: Number(c[4]) || 1, unitPrice: Number((c[5] ?? '').replace(/,/g, '')) || 0, imageKey: null,
-    }));
-    this.paste = '';
-  }
-
   save() {
     if (!this.f) return;
     if (!this.f.name.trim()) { this.formError = 'Enter the product name.'; return; }
     this.busy = true; this.formError = '';
-    this.api.saveProduct(this.f).subscribe({
+    this.api.saveProduct({ ...this.f, parts: this.f.parts.filter(x => x.partId) }).subscribe({
       next: () => { this.busy = false; this.f = null; this.load(); },
       error: e => { this.busy = false; this.formError = e.error?.message || 'Could not save the product'; },
     });

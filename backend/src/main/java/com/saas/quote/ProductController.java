@@ -14,12 +14,13 @@ import java.util.List;
 @RestController @RequestMapping("/api/products") @RequiredArgsConstructor @Transactional
 public class ProductController {
     private final ProductRepo repo;
-    private final StorageService storage;
+    private final PartRepo parts;
     private final AuditService audit;
 
     static final int MAX_PARTS = 200;
 
-    record PartIn(String name, String specification, String make, String uom, BigDecimal qty, BigDecimal unitPrice, String imageKey) {}
+    /** A part of the Parts master and how many the product needs. */
+    record PartIn(Long partId, BigDecimal qty) {}
     record Save(String businessLine, String name, String code, BigDecimal capacity, String description, Boolean active, List<PartIn> parts) {}
 
     /** ?line=GENSET narrows the list. The statement form reads it too, so quotation creators can see it without PRODUCTS. */
@@ -64,9 +65,8 @@ public class ProductController {
         String name = src.getName() + " (copy)";
         for (int n = 2; repo.findFirstByTenantIdAndBusinessLineAndNameIgnoreCase(me.tenantId(), src.getBusinessLine(), name).isPresent(); n++)
             name = src.getName() + " (copy " + n + ")";
-        List<PartIn> parts = src.getParts().stream()
-                .map(x -> new PartIn(x.getName(), x.getSpecification(), x.getMake(), x.getUom(), x.getQty(), x.getUnitPrice(), x.getImageKey())).toList();
-        return create(me, new Save(src.getBusinessLine(), name, src.getCode(), src.getCapacity(), src.getDescription(), src.isActive(), parts));
+        List<PartIn> copy = src.getParts().stream().map(x -> new PartIn(x.getPartId(), x.getQty())).toList();
+        return create(me, new Save(src.getBusinessLine(), name, src.getCode(), src.getCapacity(), src.getDescription(), src.isActive(), copy));
     }
 
     /** Statements keep their own copy of the items, so deleting a product never changes an existing statement. */
@@ -88,8 +88,8 @@ public class ProductController {
         repo.findFirstByTenantIdAndBusinessLineAndNameIgnoreCase(me.tenantId(), line.name(), name).filter(x -> !x.getId().equals(p.getId()))
                 .ifPresent(x -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + line.label + " product named \"" + name + "\" already exists"); });
         if (in.capacity() != null && in.capacity().signum() < 0) throw bad("Capacity cannot be negative");
-        List<PartIn> parts = in.parts() == null ? List.of() : in.parts();
-        if (parts.size() > MAX_PARTS) throw bad("A product can have at most " + MAX_PARTS + " parts");
+        List<PartIn> list = in.parts() == null ? List.of() : in.parts();
+        if (list.size() > MAX_PARTS) throw bad("A product can have at most " + MAX_PARTS + " parts");
 
         p.setBusinessLine(line.name());
         p.setName(name);
@@ -100,20 +100,16 @@ public class ProductController {
         p.setUpdatedAt(Instant.now());
         p.getParts().clear();
         int n = 1;
-        for (PartIn x : parts) {
-            String partName = trim(x.name());
-            if (partName == null) continue;   // blank rows from the editor are dropped
-            if (x.qty() != null && x.qty().signum() < 0) throw bad("Quantity of \"" + partName + "\" cannot be negative");
-            if (x.unitPrice() != null && x.unitPrice().signum() < 0) throw bad("Unit price of \"" + partName + "\" cannot be negative");
+        for (PartIn x : list) {
+            if (x.partId() == null) continue;   // empty rows from the editor are dropped
+            Part master = parts.findByIdAndTenantId(x.partId(), me.tenantId()).orElseThrow(() -> bad("Unknown part"));
+            if (!master.fits(line.name()))
+                throw bad("\"" + master.getName() + "\" is a " + BusinessLine.of(master.getBusinessLine()).label + " part and cannot be used in a " + line.label + " product");
+            if (x.qty() != null && x.qty().signum() < 0) throw bad("Quantity of \"" + master.getName() + "\" cannot be negative");
             ProductPart part = new ProductPart();
             part.setSno(n++);
-            part.setName(partName);
-            part.setSpecification(trim(x.specification()));
-            part.setMake(trim(x.make()));
-            part.setUom(trim(x.uom()) == null ? "Nos." : x.uom().trim());
+            part.setPart(master);
             part.setQty(x.qty() == null ? BigDecimal.ONE : x.qty());
-            part.setUnitPrice(x.unitPrice() == null ? BigDecimal.ZERO : x.unitPrice());
-            part.setImageKey(storage.own(me.tenantId(), x.imageKey()));
             part.setProduct(p);
             p.getParts().add(part);
         }

@@ -34,7 +34,16 @@ export interface Customer {
   id?: number; name: string; contactPerson: string; phone: string; email: string; gstin: string;
   address: string; city: string; notes: string; createdAt?: string; updatedAt?: string;
 }
-export interface ProductPart { id?: number; name: string; specification: string; make: string; uom: string; qty: number; unitPrice: number; imageKey: string | null; amount?: number; }
+/** Masters > Parts. businessLine is SOLAR, GENSET or BOTH. */
+export interface Part {
+  id?: number; name: string; category: string; businessLine: string; specification: string; make: string; uom: string;
+  unitPrice: number; hsnCode: string; imageKey: string | null; active: boolean; updatedAt?: string; usedIn?: number;
+}
+/** A product's part: the master part (read-only values) and the quantity. */
+export interface ProductPart {
+  id?: number; partId: number | null; qty: number;
+  name?: string; category?: string; specification?: string; make?: string; uom?: string; unitPrice?: number; imageKey?: string | null; amount?: number; partActive?: boolean;
+}
 export interface Product {
   id?: number; businessLine: string; name: string; code: string; capacity: number | null; description: string; active: boolean;
   parts: ProductPart[]; total?: number; createdAt?: string; updatedAt?: string;
@@ -101,6 +110,9 @@ export class Api {
 
   customers() { return this.http.get<Customer[]>('/api/customers'); }
   saveCustomer(c: Customer) { return c.id ? this.http.put<Customer>(`/api/customers/${c.id}`, c) : this.http.post<Customer>('/api/customers', c); }
+  parts(line?: string) { return this.http.get<Part[]>('/api/parts', { params: line ? { line } : {} }); }
+  savePart(p: Part) { return p.id ? this.http.put<Part>(`/api/parts/${p.id}`, p) : this.http.post<Part>('/api/parts', p); }
+  deletePart(id: number) { return this.http.delete(`/api/parts/${id}`); }
   products(line?: string) { return this.http.get<Product[]>('/api/products', { params: line ? { line } : {} }); }
   saveProduct(p: Product) { return p.id ? this.http.put<Product>(`/api/products/${p.id}`, p) : this.http.post<Product>('/api/products', p); }
   cloneProduct(id: number) { return this.http.post<Product>(`/api/products/${id}/clone`, {}); }
