@@ -22,4 +22,9 @@ app:
   storage: ${STORAGE:local}          # local | s3
   local-dir: ${LOCAL_DIR:./uploads}
   s3.bucket: ${S3_BUCKET:}
+  seed:                              # first company + Admin at start-up (SeedAdmin); skipped when unset or the email exists
+    admin-email: ${SEED_ADMIN_EMAIL:}
+    admin-password: ${SEED_ADMIN_PASSWORD:}
+    admin-name: ${SEED_ADMIN_NAME:}
+    company-name: ${SEED_COMPANY_NAME:Accurate Powertech}
 management.endpoints.web.exposure.include: health

@@ -29,6 +29,10 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       PROXY_HOPS: ${PROXY_HOPS:-2}   # Caddy, then the frontend's nginx
       STORAGE: local
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
+      SEED_COMPANY_NAME: ${SEED_COMPANY_NAME:-Accurate Powertech}
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
     volumes: [uploads:/app/uploads]
     mem_limit: ${BACKEND_MEM_LIMIT:-768m}
