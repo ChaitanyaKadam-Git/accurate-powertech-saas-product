@@ -66,7 +66,9 @@ public class QuotationController {
     public Quotation update(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @RequestBody Quotation in) {
         validate(in);
         Quotation q = own(id, me);
+        String ref = q.getRefNo();
         apply(q, in, me.tenantId());
+        if (blank(q.getRefNo())) q.setRefNo(blank(ref) ? nextRef(me.tenantId()) : ref);   // an empty field never wipes the number
         Quotation saved = repo.save(q);
         audit.log(me, AppModule.QUOTATIONS, "EDIT", "Quotation", saved.getId(), saved.getRefNo() + " for " + saved.getClientName());
         return saved;
@@ -120,7 +122,15 @@ public class QuotationController {
         for (QuoteSection s : templates.defaults(q, uid)) { s.setQuotation(q); q.getSections().add(s); }
     }
 
-    private String nextRef(Long uid) { return "QTN/" + LocalDate.now().getYear() + "/" + (repo.countByOwnerId(uid) + 1); }
+    /** QTN/<year>/<n>: one more than the highest number used this year, so deleting a statement never repeats a number. */
+    private String nextRef(Long uid) {
+        String prefix = "QTN/" + LocalDate.now().getYear() + "/";
+        int max = 0;
+        for (String r : repo.findRefNos(uid, prefix + "%")) {
+            try { max = Math.max(max, Integer.parseInt(r.substring(prefix.length()).trim())); } catch (NumberFormatException ignored) { }
+        }
+        return prefix + (max + 1);
+    }
 
     /** Phone: digits only, at most 10. Capacity and GST cannot be negative. */
     private static void validate(Quotation in) {
@@ -155,7 +165,7 @@ public class QuotationController {
 
         t.getItems().clear();
         int n = 1;
-        for (QuoteItem i : in.getItems()) {
+        for (QuoteItem i : in.getItems() == null ? List.<QuoteItem>of() : in.getItems()) {
             QuoteItem x = new QuoteItem();
             x.setSno(n++);
             x.setEquipment(i.getEquipment());
@@ -171,7 +181,7 @@ public class QuotationController {
 
         t.getSections().clear();
         int p = 0;
-        for (QuoteSection s : in.getSections()) {
+        for (QuoteSection s : in.getSections() == null ? List.<QuoteSection>of() : in.getSections()) {
             QuoteSection x = new QuoteSection();
             x.setPosition(p++);
             x.setKind(List.of("TEXT", "BOM", "OFFER").contains(s.getKind()) ? s.getKind() : "TEXT");
@@ -180,7 +190,7 @@ public class QuotationController {
             x.setStyle(List.of("BULLETS", "PARAGRAPH", "TABLE").contains(s.getStyle()) ? s.getStyle() : "BULLETS");
             x.setVisible(s.isVisible());
             x.setImageColumns(Math.max(1, Math.min(3, s.getImageColumns())));
-            for (String k : s.getImageKeys()) {
+            for (String k : s.getImageKeys() == null ? List.<String>of() : s.getImageKeys()) {
                 String ok = storage.own(uid, k);
                 if (ok != null) x.getImageKeys().add(ok);
             }

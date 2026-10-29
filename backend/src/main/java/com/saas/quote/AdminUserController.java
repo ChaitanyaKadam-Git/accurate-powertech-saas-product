@@ -165,7 +165,7 @@ public class AdminUserController {
         AppUser u = find(id, me);
         if (u.isAdminUser()) throw bad("Administrators always have every right");
         Set<String> want = new HashSet<>();
-        for (String k : in.rights()) {
+        for (String k : in.rights() == null ? List.<String>of() : in.rights()) {
             if (!AppModule.valid(k)) throw bad("Unknown right: " + k);
             if (AppModule.isAdminOnly(k)) throw bad("Administration rights cannot be granted to non-administrators");
             want.add(k);

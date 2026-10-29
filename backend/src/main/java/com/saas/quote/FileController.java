@@ -29,9 +29,12 @@ public class FileController {
 
     @GetMapping
     public ResponseEntity<byte[]> get(@AuthenticationPrincipal AuthUser me, @RequestParam("key") String key) throws IOException {
-        if (!key.startsWith(me.tenantId() + "/")) throw new ResponseStatusException(HttpStatus.FORBIDDEN);   // tenants only see their own photos
+        if (storage.own(me.tenantId(), key) == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN);   // tenants only see their own photos
+        byte[] body;
+        try { body = storage.load(key); }
+        catch (java.nio.file.NoSuchFileException | software.amazon.awssdk.services.s3.model.NoSuchKeyException e) { throw new ResponseStatusException(HttpStatus.NOT_FOUND); }
         return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG)
                 .cacheControl(CacheControl.maxAge(1, TimeUnit.DAYS).cachePrivate())
-                .body(storage.load(key));
+                .body(body);
     }
 }

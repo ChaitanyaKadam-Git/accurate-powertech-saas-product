@@ -70,9 +70,14 @@ public class StorageService {
         return Files.readAllBytes(path(key));
     }
 
-    /** Returns the key only if it belongs to this tenant, otherwise null. */
+    /** Exactly the shape save() writes: "<tenant id>/<uuid>.jpg". Anything else (for example "1/../2/x.jpg") is rejected. */
+    private static final java.util.regex.Pattern KEY = java.util.regex.Pattern.compile("^(\\d+)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.jpg$");
+
+    /** Returns the key only if it is a valid key of this tenant, otherwise null. */
     public String own(Long uid, String key) {
-        return (key == null || key.isBlank() || !key.startsWith(uid + "/")) ? null : key;
+        if (key == null) return null;
+        java.util.regex.Matcher m = KEY.matcher(key);
+        return m.matches() && m.group(1).equals(String.valueOf(uid)) ? key : null;
     }
 
     private Path path(String key) {

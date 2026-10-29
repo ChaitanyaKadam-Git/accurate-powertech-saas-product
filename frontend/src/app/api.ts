@@ -109,7 +109,7 @@ export class Api {
       a.href = URL.createObjectURL(b);
       a.download = filename;
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
   }
 
@@ -129,7 +129,11 @@ export class Api {
 
   /** Opens the PDF in a new tab (needs PDF "view"). */
   preview(id: number) {
-    this.http.get(`/api/quotations/${id}/pdf`, { params: { inline: 'true' }, responseType: 'blob' }).subscribe(b => window.open(URL.createObjectURL(b), '_blank'));
+    const tab = window.open('', '_blank');   // opened during the click, so popup blockers allow it
+    this.http.get(`/api/quotations/${id}/pdf`, { params: { inline: 'true' }, responseType: 'blob' }).subscribe({
+      next: b => { const url = URL.createObjectURL(b); if (tab) tab.location.href = url; else window.open(url, '_blank'); },
+      error: () => tab?.close(),
+    });
   }
 
   download(id: number, name: string) {
@@ -138,7 +142,7 @@ export class Api {
       a.href = URL.createObjectURL(b);
       a.download = `${(name || 'quotation').replace(/[^\w-]/g, '_')}.pdf`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
   }
 }

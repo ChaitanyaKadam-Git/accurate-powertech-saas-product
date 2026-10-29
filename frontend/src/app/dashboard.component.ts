@@ -65,6 +65,6 @@ export class DashboardComponent implements OnInit {
   get greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
   get total() { return this.rows.reduce((s, r) => s + (r.total || 0), 0); }
   get avg() { return this.rows.length ? this.total / this.rows.length : 0; }
-  get thisMonth() { const m = new Date().toISOString().slice(0, 7); return this.rows.filter(r => (r.quoteDate || '').startsWith(m)).length; }
+  get thisMonth() { const d = new Date(), m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; return this.rows.filter(r => (r.quoteDate || '').startsWith(m)).length; }
   get recent() { return this.rows.slice(0, 6); }
 }
