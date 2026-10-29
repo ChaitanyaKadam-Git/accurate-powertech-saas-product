@@ -36,7 +36,7 @@ import { IconComponent } from './icon.component';
       </div>
       @if (recent.length === 0) { <p class="muted">No statements yet. Click "New statement" to create your first one.</p> }
       @else {
-        <table>
+        <div class="scroll"><table>
           <thead><tr><th>Ref</th><th>Client</th><th>Location</th><th>Date</th><th class="r">Total</th><th></th></tr></thead>
           <tbody>
             @for (r of recent; track r.id) {
@@ -47,7 +47,7 @@ import { IconComponent } from './icon.component';
               </tr>
             }
           </tbody>
-        </table>
+        </table></div>
       }
     </div>
     }
