@@ -52,6 +52,20 @@ Open http://localhost.
 7. Route 53 record -> ALB. Security groups: ALB open on 443; tasks accept traffic only from the ALB; RDS accepts only from the backend tasks.
 Cheaper alternative for a first client: one EC2 (t3.small) running `docker compose` with RDS + S3.
 
+## 4. CI/CD (GitHub Actions)
+- `.github/workflows/ci.yml`: every PR and branch push builds the backend (`mvn verify`) and the frontend (`ng build`).
+- `.github/workflows/deploy.yml`: every push to `main` runs CI, pushes `backend` and `frontend` images to GHCR,
+  then SSHes to the server and runs `docker compose pull && docker compose up -d` with `docker-compose.prod.yml`.
+
+One-time setup:
+1. Server: Linux with Docker + Compose plugin; deploy user in the `docker` group; port 80 open.
+2. Repo Settings -> Environments -> create `production`. Add secrets:
+   `SSH_HOST`, `SSH_USER`, `SSH_KEY` (private key, its public key in the server's `~/.ssh/authorized_keys`),
+   `DB_PASS`, `JWT_SECRET` (>= 32 chars), optional `SSH_PORT`, `SSH_KNOWN_HOSTS` (output of `ssh-keyscan <host>`).
+3. Optional variables: `CORS_ORIGINS` (e.g. `https://your-domain`), `DEPLOY_PATH` (default `~/accurate-powertech`),
+   `PROXY_HOPS`, `HTTP_PORT`.
+The workflow writes `.env` on the server on each deploy; the database and uploads live in Docker volumes and survive redeploys.
+
 ## Before real client data
 - Replace `ddl-auto: update` with Flyway migrations.
 - Move the JWT from localStorage to an httpOnly cookie, or keep it short-lived with refresh tokens.
