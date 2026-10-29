@@ -40,7 +40,7 @@ import { RightsMatrixComponent } from './rights-matrix.component';
         <div class="modal-h"><h3>{{ f.id ? (f.systemRole ? f.name : 'Edit role') : 'New role' }}</h3><button class="icon-btn" (click)="f = null" aria-label="Close"><app-icon name="x" /></button></div>
         @if (f.systemRole) { <p class="muted">The Admin role is built in: it holds every right and signs in through Admin login.</p> }
         <div class="grid">
-          <label>Role name <span class="req">*</span><input [(ngModel)]="f.name" [disabled]="!!f.systemRole" /></label>
+          <label><span>Role name <span class="req">*</span></span><input [(ngModel)]="f.name" [disabled]="!!f.systemRole" /></label>
           <label>Description<input [(ngModel)]="f.description" [disabled]="!!f.systemRole" /></label>
           <label>Quotation visibility
             <select [(ngModel)]="f.quotationScope" [disabled]="!!f.systemRole"><option value="OWN">Own records only</option><option value="ALL">All records</option></select>

@@ -45,6 +45,7 @@ import { IconComponent } from './icon.component';
 
       <section class="auth-panel">
         <div class="auth-card">
+          @if (logoOk) { <img class="auth-logo" src="logo.png" alt="Company logo" (error)="logoOk = false" /> }
           <h2>{{ registering ? 'Create your company account' : 'Sign in' }}</h2>
           <p class="muted">
             {{ registering ? 'You will be the administrator who creates users and decides what each of them can do.'
@@ -56,10 +57,10 @@ import { IconComponent } from './icon.component';
               <span class="field"><app-icon name="building" /><input placeholder="Your company name" [(ngModel)]="company" /></span>
             </label>
           }
-          <label>Email <span class="req">*</span>
+          <label><span>Email <span class="req">*</span></span>
             <span class="field"><app-icon name="mail" /><input type="email" placeholder="you@company.com" [(ngModel)]="email" /></span>
           </label>
-          <label>Password <span class="req">*</span>
+          <label><span>Password <span class="req">*</span></span>
             <span class="field">
               <app-icon name="lock" />
               <input [type]="show ? 'text' : 'password'" [placeholder]="registering ? 'At least 8 characters' : 'Your password'"
@@ -69,7 +70,7 @@ import { IconComponent } from './icon.component';
           </label>
 
           @if (error) { <p class="error">{{ error }}</p> }
-          <div><button class="big" [disabled]="busy" (click)="submit()">{{ registering ? 'Create account' : 'Sign in' }}</button></div>
+          <div><button class="big block" [disabled]="busy" (click)="submit()">{{ registering ? 'Create account' : 'Sign in' }}</button></div>
           <button class="link" (click)="registering = !registering; error = ''">
             {{ registering ? 'I already have an account' : 'Create a new company account' }}
           </button>

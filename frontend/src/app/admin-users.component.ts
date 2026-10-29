@@ -59,10 +59,10 @@ import { IconComponent } from './icon.component';
       <div class="modal-bg" (click)="form = null"><div class="modal" (click)="$event.stopPropagation()">
         <div class="modal-h"><h3>{{ editing ? 'Edit user' : 'Add user' }}</h3><button class="icon-btn" (click)="form = null" aria-label="Close"><app-icon name="x" /></button></div>
         <div class="grid">
-          <label>Name <span class="req">*</span><input [(ngModel)]="form.name" /></label>
-          <label>Email <span class="req">*</span><input type="email" [(ngModel)]="form.email" /></label>
-          <label>Mobile <span class="req">*</span><input [(ngModel)]="form.mobile" placeholder="+91 98765 43210" /></label>
-          <label>Role <span class="req">*</span>
+          <label><span>Name <span class="req">*</span></span><input [(ngModel)]="form.name" /></label>
+          <label><span>Email <span class="req">*</span></span><input type="email" [(ngModel)]="form.email" /></label>
+          <label><span>Mobile <span class="req">*</span></span><input [(ngModel)]="form.mobile" placeholder="+91 98765 43210" /></label>
+          <label><span>Role <span class="req">*</span></span>
             <select [(ngModel)]="form.roleId"><option [ngValue]="null">Select a role</option>@for (r of roles; track r.id) { <option [ngValue]="r.id">{{ r.name }}</option> }</select>
           </label>
           <label>Designation<input [(ngModel)]="form.designation" /></label>

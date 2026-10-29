@@ -1,8 +1,17 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './auth';
 import { BrandService } from './brand';
 import { IconComponent } from './icon.component';
+
+function labelTables() {
+  document.querySelectorAll<HTMLTableElement>('main table:not(.matrix)').forEach(t => {
+    const heads = Array.from(t.querySelectorAll('thead th'), th => th.textContent?.trim() ?? '');
+    t.classList.add('cards');
+    t.querySelectorAll('tbody tr').forEach(tr =>
+      Array.from(tr.children).forEach((td, i) => { if (td.getAttribute('data-label') !== heads[i]) td.setAttribute('data-label', heads[i] ?? ''); }));
+  });
+}
 
 @Component({
   selector: 'app-root',
@@ -13,6 +22,7 @@ import { IconComponent } from './icon.component';
       <router-outlet />
     } @else {
       <div class="shell" [class.collapsed]="collapsed">
+        <div class="side-backdrop" (click)="collapsed = true"></div>
         <aside class="side">
           <div class="brand"><span class="mark">QS</span><span class="brand-name">Quote SaaS</span></div>
           <nav class="nav">
@@ -65,7 +75,7 @@ import { IconComponent } from './icon.component';
     }
   `,
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   auth = inject(AuthService);
   brand = inject(BrandService);
   private router = inject(Router);
@@ -74,7 +84,12 @@ export class AppComponent implements OnInit {
   dark = localStorage.getItem('theme') === 'dark';
   year = new Date().getFullYear();
 
-  constructor() { this.applyTheme(); }
+  /** On phones tables are shown as cards: every cell gets its column header as data-label (styles.css, "small screens"). */
+  private labeller = new MutationObserver(() => requestAnimationFrame(() => labelTables()));
+
+  constructor() { this.applyTheme(); this.labeller.observe(document.body, { childList: true, subtree: true, characterData: true }); }
+
+  ngOnDestroy() { this.labeller.disconnect(); }
 
   ngOnInit() {
     if (this.auth.loggedIn && !this.auth.mustChange()) {
