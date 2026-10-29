@@ -1,7 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Api, LINES, Part, lineOf } from './api';
+import { Api, LINES, Part, PartImportReport, lineOf } from './api';
 import { AuthService } from './auth';
 import { IconComponent } from './icon.component';
 import { ImagePickerComponent } from './image-picker.component';
@@ -14,10 +14,11 @@ const EMPTY: Part = { name: '', category: '', businessLine: 'BOTH', specificatio
   imports: [FormsModule, DecimalPipe, DatePipe, IconComponent, ImagePickerComponent],
   template: `
     <div class="page-h">
-      <div><h1>Parts</h1><p class="muted">Every part or component once, with its price. Products are built from these parts.</p></div>
+      <div><h1>Parts</h1><p class="muted">Every component once, with its current price.</p></div>
       @if (auth.can('PRODUCTS', 'CREATE')) {
         <div>
-          <button class="ghost" (click)="bulk = true; bulkText = ''; bulkResult = ''"><app-icon name="upload" [size]="18" /> Paste from Excel</button>
+          <button class="ghost" (click)="openImport()"><app-icon name="upload" [size]="18" /> Import Excel</button>
+          <button class="ghost" (click)="bulk = true; bulkText = ''; bulkResult = ''" title="Paste rows copied from Excel">Paste rows</button>
           <button (click)="open()"><app-icon name="plus" [size]="18" /> Add part</button>
         </div>
       }
@@ -35,17 +36,21 @@ const EMPTY: Part = { name: '', category: '', businessLine: 'BOTH', specificatio
       </div>
       @if (error) { <p class="error">{{ error }}</p> }
       <div class="scroll"><table>
-        <thead><tr><th>Part</th><th>Category / Make</th><th>Line</th><th class="r">Unit price</th><th>Used in</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Part</th><th>Category</th><th>Make</th><th>Line</th><th>Specification</th><th>UOM</th><th class="r">Unit price</th><th>HSN</th><th class="r">Used in</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           @for (p of shown; track p.id) {
             <tr>
-              <td class="w-main"><b>{{ p.name }}</b>@if (p.specification) { <br /><span class="muted small clip" [title]="p.specification">{{ p.specification }}</span> }</td>
-              <td>{{ p.category || '-' }}@if (p.make) { <br /><span class="muted small">{{ p.make }}</span> }</td>
+              <td><b>{{ p.name }}</b></td>
+              <td>{{ p.category || '-' }}</td>
+              <td>{{ p.make || '-' }}</td>
               <td><span class="badge">{{ lineLabel(p.businessLine) }}</span></td>
-              <td class="r nowrap">&#8377;{{ p.unitPrice | number: '1.2-2' }}<br /><span class="muted small">per {{ p.uom }}</span></td>
-              <td class="nowrap">{{ p.usedIn ? p.usedIn + ' product' + (p.usedIn > 1 ? 's' : '') : '-' }}</td>
+              <td><span class="clip" [title]="p.specification || ''">{{ p.specification || '-' }}</span></td>
+              <td>{{ p.uom }}</td>
+              <td class="r"><b>&#8377;{{ p.unitPrice | number: '1.2-2' }}</b></td>
+              <td>{{ p.hsnCode || '-' }}</td>
+              <td class="r">{{ p.usedIn ? p.usedIn + ' product' + (p.usedIn > 1 ? 's' : '') : '-' }}</td>
               <td><span class="badge" [class.ok]="p.active" [class.off]="!p.active">{{ p.active ? 'Active' : 'Inactive' }}</span></td>
-              <td class="actions stack-actions">
+              <td class="actions">
                 <button class="link" (click)="open(p)">{{ auth.can('PRODUCTS', 'EDIT') ? 'Edit' : 'View' }}</button>
                 @if (auth.can('PRODUCTS', 'DELETE')) { <button class="link danger" (click)="remove(p)">Delete</button> }
               </td>
@@ -88,6 +93,57 @@ const EMPTY: Part = { name: '', category: '', businessLine: 'BOTH', specificatio
       </div></div>
     }
 
+    @if (imp) {
+      <div class="modal-bg"><div class="modal lg">
+        <div class="modal-h"><h3>Import parts from Excel</h3><button class="icon-btn" (click)="closeImport()" aria-label="Close"><app-icon name="x" /></button></div>
+        @if (!report) {
+          <p>1. Download the template. 2. Fill one row per part (up to 2000). 3. Upload it. You see a row-by-row check before anything is saved.</p>
+          <p>
+            <button class="ghost" (click)="template('xlsx')"><app-icon name="download" [size]="18" /> Excel template</button>
+            <button class="ghost" (click)="template('csv')"><app-icon name="download" [size]="18" /> CSV template</button>
+          </p>
+          <label>Filled template (.xlsx or .csv)<input type="file" accept=".xlsx,.csv" (change)="pickFile($event)" /></label>
+          @if (auth.can('PRODUCTS', 'EDIT')) {
+            <label class="check" style="margin-top:10px"><input type="checkbox" [(ngModel)]="updateExisting" /> Update existing parts (same part name + make): new price and details replace the old ones</label>
+          }
+          @if (impError) { <p class="error">{{ impError }}</p> }
+          <div style="margin-top:12px"><button [disabled]="!file || busy" (click)="runImport(false)">Check file</button></div>
+        } @else {
+          <div class="stats" style="margin-bottom:12px">
+            <div class="stat blue"><div><small>Rows</small><b>{{ report.total }}</b></div></div>
+            <div class="stat green"><div><small>{{ report.committed ? 'Created' : 'New parts' }}</small><b>{{ report.committed ? report.created : report.newCount }}</b></div></div>
+            <div class="stat violet"><div><small>{{ report.committed ? 'Updated' : 'Updates' }}</small><b>{{ report.committed ? report.updated : report.updateCount }}</b></div></div>
+            <div class="stat amber"><div><small>With errors</small><b>{{ report.invalid }}</b></div></div>
+          </div>
+          @if (report.committed) { <p class="ok">Import finished: {{ report.created }} part(s) created, {{ report.updated }} updated, {{ report.invalid }} skipped.</p> }
+          @else if (report.invalid > 0) { <p class="error">{{ report.invalid }} row(s) have problems and will be skipped. Fix them in your file and upload again, or import only the valid rows.</p> }
+          <div class="scroll" style="max-height:360px;overflow:auto"><table>
+            <thead><tr><th>Row</th><th>Part</th><th>Category</th><th>Line</th><th class="r">Unit price</th><th>Result</th></tr></thead>
+            <tbody>
+              @for (r of report.rows; track r.row) {
+                <tr [class.row-err]="r.status === 'ERROR'" [class.row-ok]="r.status !== 'ERROR'">
+                  <td>{{ r.row }}</td>
+                  <td><b>{{ r.name || '-' }}</b>@if (r.make) { <br /><span class="muted small">{{ r.make }}</span> }</td>
+                  <td>{{ r.category || '-' }}</td>
+                  <td>{{ lineLabel(r.line) }}</td>
+                  <td class="r nowrap">&#8377;{{ r.unitPrice | number: '1.2-2' }}</td>
+                  <td class="small">@if (r.status === 'ERROR') { <span class="error">{{ r.errors.join('; ') }}</span> }
+                    @else { <span class="badge" [class.ok]="r.status === 'NEW'" [class.warn]="r.status === 'UPDATE'">{{ r.status === 'NEW' ? (report.committed ? 'Created' : 'New') : (report.committed ? 'Updated' : 'Update') }}</span> }</td>
+                </tr>
+              }
+            </tbody>
+          </table></div>
+          <div style="margin-top:12px">
+            @if (!report.committed) {
+              <button [disabled]="report.newCount + report.updateCount === 0 || busy" (click)="runImport(true)">Import {{ report.newCount + report.updateCount }} part(s)</button>
+              <button class="ghost" (click)="report = null; file = null">Choose another file</button>
+            } @else { <button (click)="closeImport()">Close</button> }
+          </div>
+          @if (impError) { <p class="error">{{ impError }}</p> }
+        }
+      </div></div>
+    }
+
     @if (bulk) {
       <div class="modal-bg"><div class="modal lg">
         <div class="modal-h"><h3>Paste parts from Excel</h3><button class="icon-btn" (click)="bulk = false" aria-label="Close"><app-icon name="x" /></button></div>
@@ -108,6 +164,7 @@ export class PartsComponent implements OnInit {
   f: Part | null = null;
   formError = ''; busy = false;
   bulk = false; bulkText = ''; bulkResult = ''; bulkFailed = false;
+  imp = false; file: File | null = null; report: PartImportReport | null = null; impError = ''; updateExisting = false;
 
   get editable() { return this.f?.id ? this.auth.can('PRODUCTS', 'EDIT') : this.auth.can('PRODUCTS', 'CREATE'); }
   get categories() { return [...new Set(this.rows.map(r => r.category).filter((c): c is string => !!c))].sort((a, b) => a.localeCompare(b)); }
@@ -148,6 +205,20 @@ export class PartsComponent implements OnInit {
   remove(p: Part) {
     if (!confirm(`Delete the part "${p.name}"?`)) return;
     this.api.deletePart(p.id!).subscribe({ next: () => this.load(), error: e => (this.error = e.error?.message || 'Could not delete') });
+  }
+
+  openImport() { this.imp = true; this.file = null; this.report = null; this.impError = ''; this.updateExisting = false; }
+  closeImport() { this.imp = false; this.load(); }
+  pickFile(ev: Event) { this.file = (ev.target as HTMLInputElement).files?.[0] ?? null; this.impError = ''; }
+  template(fmt: string) { this.api.saveBlob('/api/parts/import/template', `parts-import-template.${fmt}`, { format: fmt }); }
+  runImport(commit: boolean) {
+    if (!this.file) return;
+    if (commit && !confirm(`Import ${this.report!.newCount} new part(s)` + (this.report!.updateCount ? ` and update ${this.report!.updateCount} existing part(s)` : '') + '?')) return;
+    this.busy = true; this.impError = '';
+    this.api.importParts(this.file, commit, this.updateExisting).subscribe({
+      next: r => { this.busy = false; this.report = r; },
+      error: e => { this.busy = false; this.impError = e.error?.message || 'Could not read the file'; },
+    });
   }
 
   /** One row per line, tab separated (copied from Excel). Saved one by one; problems are listed per row. */

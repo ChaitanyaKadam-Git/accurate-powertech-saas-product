@@ -4,8 +4,13 @@ import { AuthService } from './auth';
 import { BrandService } from './brand';
 import { IconComponent } from './icon.component';
 
+/**
+ * Data tables get class "data" (one line per row, scroll sideways). Item editors (table.items) instead become labelled
+ * cards on phones: every cell gets its column header as data-label (styles.css, "small screens").
+ */
 function labelTables() {
-  document.querySelectorAll<HTMLTableElement>('main table:not(.matrix)').forEach(t => {
+  document.querySelectorAll<HTMLTableElement>('main table:not(.matrix):not(.items), .modal table:not(.matrix):not(.items)').forEach(t => t.classList.add('data'));
+  document.querySelectorAll<HTMLTableElement>('main table.items, .modal table.items').forEach(t => {
     const heads = Array.from(t.querySelectorAll('thead th'), th => th.textContent?.trim() ?? '');
     t.classList.add('cards');
     t.querySelectorAll('tbody tr').forEach(tr =>
@@ -24,7 +29,7 @@ function labelTables() {
       <div class="shell" [class.collapsed]="collapsed">
         <div class="side-backdrop" (click)="collapsed = true"></div>
         <aside class="side">
-          <div class="brand"><span class="mark">QS</span><span class="brand-name">Quote SaaS</span></div>
+          <div class="brand"><span class="mark">@if (brand.logo()) { <img [src]="brand.logo()" alt="" /> } @else { {{ brandInitials }} }</span><span class="brand-name">{{ brand.name() || 'Quotations' }}</span></div>
           <nav class="nav">
             @if (auth.isAdmin()) {
               <div class="group">Administration</div>
@@ -36,6 +41,7 @@ function labelTables() {
               <div class="group">Workspace</div>
             }
             <a routerLink="/" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }"><app-icon name="dashboard" /><span>Dashboard</span></a>
+            @if (auth.can('CUSTOMERS', 'VIEW')) { <a routerLink="/enquiries" routerLinkActive="on"><app-icon name="funnel" /><span>Enquiries</span></a> }
             @if (auth.can('QUOTATIONS', 'VIEW')) { <a routerLink="/statements" routerLinkActive="on"><app-icon name="file" /><span>Statements</span></a> }
             @if (auth.can('QUOTATIONS', 'CREATE')) { <a routerLink="/quote/new" routerLinkActive="on"><app-icon name="plus" /><span>New statement</span></a> }
             @if (auth.can('CUSTOMERS', 'VIEW') || auth.can('PRODUCTS', 'VIEW')) { <div class="group">Masters</div> }
@@ -119,11 +125,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (u.startsWith('/statements')) return 'Statements';
     if (u.startsWith('/quote')) return 'Statement';
     if (u.startsWith('/customers')) return 'Customers';
+    if (u.startsWith('/enquiries')) return 'Enquiries';
     if (u.startsWith('/products')) return 'Products';
     if (u.startsWith('/parts')) return 'Parts';
     if (u.startsWith('/settings')) return 'Settings';
     return '';
   }
+
+  get brandInitials() { return (this.brand.name() || 'Q').split(/\s+/).filter(w => /[A-Za-z]/.test(w[0])).map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
 
   get initials() {
     const n = this.auth.userName() || this.brand.name() || this.brand.email() || '?';

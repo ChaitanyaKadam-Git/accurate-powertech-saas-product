@@ -9,7 +9,7 @@ import { RightsMatrixComponent } from './rights-matrix.component';
   imports: [FormsModule, IconComponent, RightsMatrixComponent],
   template: `
     <div class="page-h">
-      <div><h1>Roles &amp; rights</h1><p class="muted">A role is a starting set of rights across the 12 modules. You can still adjust any single person on their user page.</p></div>
+      <div><h1>Roles &amp; rights</h1><p class="muted">Ready-made sets of rights for each kind of user.</p></div>
       <button (click)="open()"><app-icon name="plus" [size]="18" /> New role</button>
     </div>
 

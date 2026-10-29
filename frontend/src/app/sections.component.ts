@@ -10,7 +10,7 @@ import { ImagePickerComponent } from './image-picker.component';
   standalone: true,
   imports: [FormsModule, ImagePickerComponent],
   template: `
-    <div class="page-h"><div><h1>Settings</h1><p class="muted">Configure how the app behaves for your company.</p></div></div>
+    <div class="page-h"><div><h1>Settings</h1><p class="muted">Company details, standard text and your account.</p></div></div>
     <div class="tabs">
       <button [class.on]="tab === 'company'" (click)="tab = 'company'">Company</button>
       @if (auth.can('TEMPLATE_DATA', 'VIEW')) { <button [class.on]="tab === 'text'" (click)="tab = 'text'">Standard text</button> }

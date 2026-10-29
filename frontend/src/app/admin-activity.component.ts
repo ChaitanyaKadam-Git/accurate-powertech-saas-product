@@ -10,7 +10,7 @@ const ACTIONS = ['CREATE', 'EDIT', 'DELETE', 'DOWNLOAD', 'SEND', 'ACTIVATE', 'DE
   standalone: true,
   imports: [FormsModule, DatePipe, IconComponent],
   template: `
-    <div class="page-h"><div><h1>Activity log</h1><p class="muted">Who signed in and out, and everything created, changed, deleted, downloaded or sent.</p></div></div>
+    <div class="page-h"><div><h1>Activity log</h1><p class="muted">Sign-ins and every change, download and send.</p></div></div>
     <div class="tabs">
       <button [class.on]="tab === 'sessions'" (click)="setTab('sessions')">Sign-in history</button>
       <button [class.on]="tab === 'audit'" (click)="setTab('audit')">Audit trail</button>

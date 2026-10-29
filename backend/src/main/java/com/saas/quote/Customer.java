@@ -11,6 +11,7 @@ import java.time.Instant;
 public class Customer {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @JsonIgnore @Column(nullable = false) private Long tenantId;
+    @Column(nullable = false, length = 20) private String code;      // CUST-0001 ..., unique per company
     @Column(nullable = false) private String name;
     private String contactPerson;
     private String phone;              // digits only, up to 10 (same rule as the statement form)

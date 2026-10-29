@@ -14,7 +14,7 @@ const emptyPart = (): ProductPart => ({ partId: null, qty: 1 });
   imports: [FormsModule, DecimalPipe, DatePipe, IconComponent, RouterLink],
   template: `
     <div class="page-h">
-      <div><h1>Products</h1><p class="muted">Genset and solar setups built from the <a routerLink="/parts">Parts</a> master. In a statement, "Add a product" copies all its parts into the items.</p></div>
+      <div><h1>Products</h1><p class="muted">Genset and solar setups built from <a routerLink="/parts">Parts</a>.</p></div>
       @if (auth.can('PRODUCTS', 'CREATE')) { <button (click)="open()"><app-icon name="plus" [size]="18" /> Add product</button> }
     </div>
 
@@ -29,17 +29,18 @@ const emptyPart = (): ProductPart => ({ partId: null, qty: 1 });
       </div>
       @if (error) { <p class="error">{{ error }}</p> }
       <div class="scroll"><table>
-        <thead><tr><th>Product</th><th>Line</th><th>Capacity</th><th>Parts</th><th class="r">Total (excl. GST)</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Product</th><th>Line</th><th>Model / code</th><th class="r">Capacity</th><th class="r">Parts</th><th class="r">Total (excl. GST)</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           @for (p of shown; track p.id) {
             <tr>
-              <td class="w-main"><b>{{ p.name }}</b>@if (p.code) { <br /><span class="muted small">{{ p.code }}</span> }</td>
+              <td><b>{{ p.name }}</b></td>
               <td><span class="badge">{{ lineOf(p.businessLine).label }}</span></td>
-              <td class="nowrap">{{ p.capacity != null ? (p.capacity | number: '1.0-2') + ' ' + lineOf(p.businessLine).unit : '-' }}</td>
-              <td>{{ p.parts.length }}</td>
-              <td class="r nowrap">&#8377;{{ p.total | number: '1.2-2' }}</td>
+              <td>{{ p.code || '-' }}</td>
+              <td class="r">{{ p.capacity != null ? (p.capacity | number: '1.0-2') + ' ' + lineOf(p.businessLine).unit : '-' }}</td>
+              <td class="r">{{ p.parts.length }}</td>
+              <td class="r"><b>&#8377;{{ p.total | number: '1.2-2' }}</b></td>
               <td><span class="badge" [class.ok]="p.active" [class.off]="!p.active">{{ p.active ? 'Active' : 'Inactive' }}</span></td>
-              <td class="actions stack-actions">
+              <td class="actions">
                 <button class="link" (click)="open(p)">{{ auth.can('PRODUCTS', 'EDIT') ? 'Edit' : 'View' }}</button>
                 @if (auth.can('PRODUCTS', 'CREATE')) { <button class="link" (click)="duplicate(p)">Duplicate</button> }
                 @if (auth.can('PRODUCTS', 'DELETE')) { <button class="link danger" (click)="remove(p)">Delete</button> }

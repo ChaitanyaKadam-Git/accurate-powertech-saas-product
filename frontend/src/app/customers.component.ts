@@ -1,38 +1,43 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Api, Customer } from './api';
 import { AuthService } from './auth';
 import { IconComponent } from './icon.component';
 
-const EMPTY: Customer = { name: '', contactPerson: '', phone: '', email: '', gstin: '', address: '', city: '', notes: '' };
+const EMPTY: Customer = { code: '', name: '', contactPerson: '', phone: '', email: '', gstin: '', address: '', city: '', notes: '' };
 
 /** Masters > Customers: the clients a company quotes for. Picked in the statement form to fill the client details. */
 @Component({
   standalone: true,
-  imports: [FormsModule, DatePipe, IconComponent],
+  imports: [FormsModule, DatePipe, IconComponent, RouterLink],
   template: `
     <div class="page-h">
-      <div><h1>Customers</h1><p class="muted">Clients you prepare statements for. Pick one in a new statement to fill in the client details.</p></div>
+      <div><h1>Customers</h1><p class="muted">Your clients, each tracked by a customer code.</p></div>
       @if (auth.can('CUSTOMERS', 'CREATE')) { <button (click)="open()"><app-icon name="plus" [size]="18" /> Add customer</button> }
     </div>
 
     <div class="card">
       <div class="toolbar">
-        <label class="grow-field">Search<input placeholder="Name, contact, phone, email, city, GSTIN" [(ngModel)]="q" /></label>
+        <label class="grow-field">Search<input placeholder="Code, name, contact, phone, email, city, GSTIN" [(ngModel)]="q" /></label>
         <label>City<select [(ngModel)]="cityF"><option value="">All cities</option>@for (c of cities; track c) { <option [value]="c">{{ c }}</option> }</select></label>
       </div>
       @if (error) { <p class="error">{{ error }}</p> }
       <div class="scroll"><table>
-        <thead><tr><th>Customer</th><th>Contact</th><th>Email / GSTIN</th><th>City</th><th></th></tr></thead>
+        <thead><tr><th>Code</th><th>Customer</th><th>Contact person</th><th>Phone</th><th>Email</th><th>GSTIN</th><th>City</th><th>Address</th><th>Actions</th></tr></thead>
         <tbody>
           @for (c of shown; track c.id) {
             <tr>
-              <td class="w-main"><b>{{ c.name }}</b>@if (c.address) { <br /><span class="muted small clip" [title]="c.address">{{ c.address }}</span> }</td>
-              <td>{{ c.contactPerson || '-' }}@if (c.phone) { <br /><span class="muted small nowrap">{{ c.phone }}</span> }</td>
-              <td class="small break">{{ c.email || '-' }}@if (c.gstin) { <br /><span class="muted nowrap">GSTIN {{ c.gstin }}</span> }</td>
+              <td><a class="code" [routerLink]="['/customers', c.id]">{{ c.code }}</a></td>
+              <td><a [routerLink]="['/customers', c.id]">{{ c.name }}</a></td>
+              <td>{{ c.contactPerson || '-' }}</td>
+              <td>{{ c.phone || '-' }}</td>
+              <td>{{ c.email || '-' }}</td>
+              <td>{{ c.gstin || '-' }}</td>
               <td>{{ c.city || '-' }}</td>
-              <td class="actions stack-actions">
+              <td><span class="clip" [title]="c.address || ''">{{ c.address || '-' }}</span></td>
+              <td class="actions">
                 <button class="link" (click)="open(c)">{{ auth.can('CUSTOMERS', 'EDIT') ? 'Edit' : 'View' }}</button>
                 @if (auth.can('CUSTOMERS', 'DELETE')) { <button class="link danger" (click)="remove(c)">Delete</button> }
               </td>
@@ -49,6 +54,7 @@ const EMPTY: Customer = { name: '', contactPerson: '', phone: '', email: '', gst
         <div class="modal-h"><div><h3>{{ f.id ? (editable ? 'Edit customer' : f.name) : 'Add customer' }}</h3>@if (f.updatedAt) { <span class="muted small">Last updated {{ f.updatedAt | date: 'dd MMM yyyy, HH:mm' }}</span> }</div><button class="icon-btn" (click)="f = null" aria-label="Close"><app-icon name="x" /></button></div>
         <fieldset class="plain" [disabled]="!editable">
           <div class="grid">
+            <label>Customer code<input [(ngModel)]="f.code" maxlength="20" placeholder="Automatic (CUST-0001 ...)" (input)="f.code = (f.code || '').toUpperCase()" /></label>
             <label class="wide"><span>Customer name <span class="req">*</span></span><input [(ngModel)]="f.name" placeholder="Company or person" /></label>
             <label>Contact person<input [(ngModel)]="f.contactPerson" /></label>
             <label>Phone<input [(ngModel)]="f.phone" inputmode="numeric" maxlength="10" placeholder="10-digit number" (input)="f.phone = digits(f.phone)" /></label>
@@ -81,7 +87,7 @@ export class CustomersComponent implements OnInit {
   get shown() {
     const q = this.q.trim().toLowerCase();
     return this.rows.filter(c =>
-      (!q || [c.name, c.contactPerson, c.phone, c.email, c.city, c.gstin, c.address].some(v => (v || '').toLowerCase().includes(q))) &&
+      (!q || [c.code, c.name, c.contactPerson, c.phone, c.email, c.city, c.gstin, c.address].some(v => (v || '').toLowerCase().includes(q))) &&
       (!this.cityF || c.city === this.cityF));
   }
 

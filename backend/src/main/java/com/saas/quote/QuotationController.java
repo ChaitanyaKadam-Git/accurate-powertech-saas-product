@@ -24,18 +24,22 @@ public class QuotationController {
     private final TemplateService templates;
     private final UserRepo users;
     private final AuditService audit;
+    private final EnquiryController enquiries;
+    private final CustomerRepo customers;
 
-    record Summary(Long id, String businessLine, String refNo, String clientName, String projectLocation, LocalDate quoteDate, BigDecimal total, String createdBy) {}
+    record Summary(Long id, String businessLine, Long enquiryId, Long customerId, String customerCode, String refNo, String clientName, String projectLocation, LocalDate quoteDate, BigDecimal total, String createdBy) {}
 
     /** Quotations this person may see: everything in the company, or only their own, depending on the role. */
     @GetMapping @Requires(module = AppModule.QUOTATIONS, right = Right.VIEW)
     public List<Summary> list(@AuthenticationPrincipal AuthUser me) {
+        Map<Long, String> codes = new HashMap<>();
+        for (Customer c : customers.findByTenantIdOrderByNameAsc(me.tenantId())) codes.put(c.getId(), c.getCode());
         Map<Long, String> names = new HashMap<>();
         for (AppUser u : users.findByTenantIdOrderByIdDesc(me.tenantId())) names.put(u.getId(), u.displayName());
         List<Quotation> rows = me.seesAllQuotations() ? repo.findByOwnerIdOrderByIdDesc(me.tenantId())
                 : repo.findByOwnerIdAndCreatedByOrderByIdDesc(me.tenantId(), me.userId());
         return rows.stream()
-                .map(q -> new Summary(q.getId(), q.getBusinessLine(), q.getRefNo(), q.getClientName(), q.getProjectLocation(), q.getQuoteDate(), q.getTotal(),
+                .map(q -> new Summary(q.getId(), q.getBusinessLine(), q.getEnquiryId(), q.getCustomerId(), codes.get(q.getCustomerId()), q.getRefNo(), q.getClientName(), q.getProjectLocation(), q.getQuoteDate(), q.getTotal(),
                         q.getCreatedBy() == null ? "" : names.getOrDefault(q.getCreatedBy(), "")))
                 .toList();
     }
@@ -59,9 +63,12 @@ public class QuotationController {
         q.setOwnerId(tid);
         q.setCreatedBy(me.userId());
         apply(q, in, tid);
+        q.setEnquiryId(in.getEnquiryId() == null ? null : enquiries.find(in.getEnquiryId(), me).getId());
+        q.setCustomerId(customerFor(in, q, me));
         if (q.getSections().isEmpty()) fillDefaults(q, tid);
         if (blank(q.getRefNo())) q.setRefNo(nextRef(tid));
         Quotation saved = repo.save(q);
+        if (saved.getEnquiryId() != null) enquiries.statementCreated(me, saved.getEnquiryId(), saved);
         audit.log(me, AppModule.QUOTATIONS, "CREATE", "Quotation", saved.getId(), saved.getRefNo() + " for " + saved.getClientName());
         return saved;
     }
@@ -72,6 +79,9 @@ public class QuotationController {
         Quotation q = own(id, me);
         String ref = q.getRefNo();
         apply(q, in, me.tenantId());
+        if (in.getEnquiryId() != null && !in.getEnquiryId().equals(q.getEnquiryId())) q.setEnquiryId(enquiries.find(in.getEnquiryId(), me).getId());
+        else if (in.getEnquiryId() == null) q.setEnquiryId(null);
+        q.setCustomerId(customerFor(in, q, me));
         if (blank(q.getRefNo())) q.setRefNo(blank(ref) ? nextRef(me.tenantId()) : ref);   // an empty field never wipes the number
         Quotation saved = repo.save(q);
         audit.log(me, AppModule.QUOTATIONS, "EDIT", "Quotation", saved.getId(), saved.getRefNo() + " for " + saved.getClientName());
@@ -85,6 +95,8 @@ public class QuotationController {
         c.setOwnerId(me.tenantId());
         c.setCreatedBy(me.userId());
         apply(c, src, me.tenantId());
+        c.setEnquiryId(src.getEnquiryId());
+        c.setCustomerId(src.getCustomerId());
         c.setRefNo(nextRef(me.tenantId()));
         c.setQuoteDate(LocalDate.now());
         Quotation saved = repo.save(c);
@@ -120,6 +132,14 @@ public class QuotationController {
         if (!me.seesAllQuotations() && !Objects.equals(q.getCreatedBy(), me.userId())) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         if (q.getSections().isEmpty()) fillDefaults(q, me.tenantId());
         return q;
+    }
+
+    /** The customer of a statement: the enquiry's customer, else the one picked in the form (must be this company's). */
+    private Long customerFor(Quotation in, Quotation q, AuthUser me) {
+        if (q.getEnquiryId() != null) return enquiries.find(q.getEnquiryId(), me).getCustomerId();
+        if (in.getCustomerId() == null) return null;
+        return customers.findByIdAndTenantId(in.getCustomerId(), me.tenantId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a valid customer")).getId();
     }
 
     private void fillDefaults(Quotation q, Long uid) {

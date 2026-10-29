@@ -398,9 +398,20 @@ cust = lambda token, body: call("POST", "/customers", token, body)
 s, c1 = cust(PRIYA, {"name": "Shree Sai Industries", "contactPerson": "Mr. Shinde", "phone": "9876500000", "email": "Purchase@ShreeSai.local",
                      "gstin": "27abcde1234f1z5", "address": "Plot 4, MIDC Chakan", "city": "Chakan", "notes": "Prefers Waaree panels"})
 check("manager adds a customer (GSTIN upper-cased, email lower-cased)", s == 200 and c1["gstin"] == "27ABCDE1234F1Z5" and c1["email"] == "purchase@shreesai.local", (s, c1))
+check("first customer gets code CUST-0001", c1["code"] == "CUST-0001", c1.get("code"))
 s, c2 = cust(SNEHA, {"name": "Patil Agro Foods", "phone": "9822000001", "city": "Baramati"})
 check("sales exec adds a customer", s == 200)
 s, c3 = cust(PRIYA, {"name": "Metro Hospital", "city": "Kothrud"})
+check("codes run on: CUST-0002, CUST-0003", c2["code"] == "CUST-0002" and c3["code"] == "CUST-0003", (c2.get("code"), c3.get("code")))
+s, cc = cust(PRIYA, {"name": "Custom Code Co", "code": "pune-key-01"})
+check("own code accepted (upper-cased)", s == 200 and cc["code"] == "PUNE-KEY-01")
+check("duplicate code refused (case-insensitive)", cust(PRIYA, {"name": "Another", "code": "Pune-Key-01"})[0] == 409)
+check("invalid code refused", cust(PRIYA, {"name": "Bad code", "code": "a b c"})[0] == 400)
+s, c4 = cust(PRIYA, {"name": "After custom"})
+check("automatic codes ignore custom ones", s == 200 and c4["code"] == "CUST-0004", c4.get("code"))
+s, ed = call("PUT", f"/customers/{c1['id']}", PRIYA, {"name": "Shree Sai Industries", "city": "Chakan"})
+check("edit without a code keeps the code", s == 200 and ed["code"] == "CUST-0001")
+call("DELETE", f"/customers/{cc['id']}", PRIYA); call("DELETE", f"/customers/{c4['id']}", PRIYA)
 check("duplicate name refused (case-insensitive)", cust(PRIYA, {"name": "shree sai industries"})[0] == 409)
 check("missing name refused", cust(PRIYA, {"name": "  "})[0] == 400)
 check("bad phone refused", cust(PRIYA, {"name": "X1", "phone": "98-765"})[0] == 400)
@@ -420,7 +431,7 @@ REENA = first_login("reena@accuratepowertech.local", ru["tempPassword"], "Welcom
 check("no CUSTOMERS rights and no quotation create/edit: list refused", call("GET", "/customers", REENA)[0] == 403)
 check("no CUSTOMERS rights: create refused", cust(REENA, {"name": "Y"})[0] == 403)
 s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "CUSTOMERS", "size": 200})
-check("customer changes in the audit trail (3 create, 1 edit, 1 delete)", s == 200 and sorted(x["action"] for x in a["items"]) == ["CREATE", "CREATE", "CREATE", "DELETE", "EDIT"], [x["action"] for x in a["items"]] if s == 200 else s)
+check("customer changes in the audit trail (5 create, 2 edit, 3 delete)", s == 200 and sorted(x["action"] for x in a["items"]) == ["CREATE"] * 5 + ["DELETE"] * 3 + ["EDIT"] * 2, [x["action"] for x in a["items"]] if s == 200 else s)
 
 # ---------------------------------------------------------------- 11c. Masters > Parts and Products
 print("\n== Parts")
@@ -446,6 +457,45 @@ check("genset filter gives GENSET + BOTH parts", s == 200 and {x["businessLine"]
 check("sales exec can read parts", call("GET", "/parts", AMIT)[0] == 200)
 check("sales exec cannot add parts", part(AMIT, {"name": "X"})[0] == 403)
 check("no product or quotation rights: parts refused", call("GET", "/parts", REENA)[0] == 403)
+
+print("\n== Parts import (Excel / CSV)")
+s, tx = call("GET", "/parts/import/template", PRIYA, params={"format": "xlsx"}, raw=True)
+check("Excel template downloads", s == 200 and tx[:2] == b"PK")
+s, tc = call("GET", "/parts/import/template", PRIYA, params={"format": "csv"}, raw=True)
+check("CSV template downloads", s == 200 and tc.startswith(b"Part name,Category,Make"))
+xf = {"file": ("parts.xlsx", tx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files=xf)
+st = {r["name"]: r["status"] for r in rep["rows"]}
+check("xlsx check: 1 new, existing module and cable flagged", s == 200 and rep["total"] == 3 and rep["newCount"] == 1 and st["Power cable 3.5C x 70 sq mm"] == "ERROR" and st["Mono PERC module 540 Wp"] == "ERROR", (s, rep if s != 200 else st))
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "false", "update": "true"}, files=xf)
+check("with update: existing module and cable become UPDATE", s == 200 and rep["updateCount"] == 2 and rep["invalid"] == 0)
+check("check-only saved nothing", not any(x["name"] == "AMF panel 125 kVA" for x in call("GET", "/parts", PRIYA)[1]))
+bad_csv = ("Part name,Category,Make,Specification,UOM,Unit price,HSN,Line\r\n"
+           "Battery 12V 88Ah,Battery,Exide,Starting battery,Nos.,\"9,500\",8507,Genset\r\n"
+           ",Panel,X,,Nos.,100,,Genset\r\n"
+           "Bad price,Misc,,,Nos.,abc,,Both\r\n"
+           "Bad hsn,Misc,,,Nos.,10,12ab,Both\r\n"
+           "Bad line,Misc,,,Nos.,10,,Wind\r\n"
+           "Battery 12V 88Ah,Battery,Exide,again,Nos.,9600,8507,Genset\r\n"
+           "DC cable 4 sq mm,Cable,Polycab,,Mtr,Rs. 45,8544,Solar EPC\r\n").encode()
+cf = {"file": ("parts.csv", bad_csv, "text/csv")}
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files=cf)
+errs = {r["row"]: " ".join(r["errors"]) for r in rep["rows"] if r["errors"]}
+check("csv check: 2 valid, 5 errors with reasons", s == 200 and rep["newCount"] == 2 and rep["invalid"] == 5 and "required" in errs[3]
+      and "not a number" in errs[4] and "HSN" in errs[5] and "Line" in errs[6] and "earlier in the file" in errs[7], (rep.get("newCount"), rep.get("invalid"), errs))
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "true"}, files=cf)
+check("csv commit creates only the valid rows", s == 200 and rep["created"] == 2 and rep["updated"] == 0)
+pl = {x["name"]: x for x in call("GET", "/parts", PRIYA)[1]}
+check("prices with commas / Rs. parsed, line names understood", float(pl["Battery 12V 88Ah"]["unitPrice"]) == 9500 and float(pl["DC cable 4 sq mm"]["unitPrice"]) == 45 and pl["DC cable 4 sq mm"]["businessLine"] == "SOLAR")
+s, rep = call("POST", "/parts/import", PRIYA, params={"commit": "true", "update": "true"}, files=xf)
+check("xlsx commit with update: 1 created, 2 updated", s == 200 and rep["created"] == 1 and rep["updated"] == 2)
+pl = {x["name"]: x for x in call("GET", "/parts", PRIYA)[1]}
+check("updated part took the new details", pl["Power cable 3.5C x 70 sq mm"]["specification"] == "Armoured, aluminium" and pl["Power cable 3.5C x 70 sq mm"]["businessLine"] == "BOTH")
+check("sales exec cannot import", call("POST", "/parts/import", AMIT, params={"commit": "false"}, files=cf)[0] == 403)
+check("wrong file type refused", call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files={"file": ("parts.txt", b"x", "text/plain")})[0] == 400)
+check("file without the header refused", call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files={"file": ("p.csv", b"Name,Price\r\nx,1\r\n", "text/csv")})[0] == 400)
+s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PRODUCTS", "action": "IMPORT", "size": 10})
+check("imports in the audit trail", s == 200 and a["total"] == 2)
 
 print("\n== Products")
 prod = lambda token, body: call("POST", "/products", token, body)
@@ -487,6 +537,84 @@ check("no product or quotation rights: products refused", call("GET", "/products
 s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PRODUCTS", "size": 500})
 check("parts and products in the audit trail", s == 200 and {"Part", "Product"} <= {x["entityType"] for x in a["items"]} and any("99000" in (x["detail"] or "") for x in a["items"]))
 
+# ---------------------------------------------------------------- 11d. Customer flow (enquiry -> order -> commissioning)
+OTHER_T = call("POST", "/auth/register", body={"email": "early@othersolar.local", "password": "Other@2026x", "companyName": "Early Other"})[1]["token"]
+print("\n== Customer flow")
+import datetime as _dt
+td = _dt.date.today(); iso = lambda d: d.isoformat()
+enq = lambda token, body: call("POST", "/enquiries", token, body)
+s, cmetro = call("POST", "/customers", PRIYA, {"name": "Metro Hospital", "city": "Kothrud", "phone": "9822334455"})
+s, e1 = enq(AMIT, {"customerId": cmetro["id"], "businessLine": "GENSET", "title": "125 kVA DG set for hospital backup", "capacity": 125,
+                   "source": "Website", "expectedValue": 1500000, "nextFollowUp": iso(td)})
+check("sales exec creates an enquiry (owner = self, NEW)", s == 200 and e1["enquiry"]["refNo"] == f"ENQ/{td.year}/1" and e1["enquiry"]["stage"] == "NEW"
+      and e1["ownerName"] == "Amit Patil" and e1["events"][0]["kind"] == "CREATED", (s, e1))
+E1 = e1["enquiry"]["id"]
+check("customer is required", enq(AMIT, {"title": "x"})[0] == 400)
+check("requirement is required", enq(AMIT, {"customerId": cmetro["id"], "title": " "})[0] == 400)
+check("sales exec cannot assign to someone else", enq(AMIT, {"customerId": cmetro["id"], "title": "x", "ownerId": people["priya@accuratepowertech.local"]["id"]})[0] == 400)
+s, e2 = enq(PRIYA, {"customerId": c1["id"], "businessLine": "SOLAR", "title": "50 kWp rooftop", "capacity": 50, "source": "Referral",
+                    "expectedValue": 2200000, "ownerId": people["sneha@accuratepowertech.local"]["id"]})
+check("manager assigns an enquiry to Sneha", s == 200 and e2["ownerName"] == "Sneha Joshi" and e2["enquiry"]["refNo"] == f"ENQ/{td.year}/2")
+E2 = e2["enquiry"]["id"]
+check("Amit (OWN) sees only his enquiry", [x["id"] for x in call("GET", "/enquiries", AMIT)[1]] == [E1])
+check("Amit cannot open Sneha's enquiry (404)", call("GET", f"/enquiries/{E2}", AMIT)[0] == 404)
+check("manager sees both", len(call("GET", "/enquiries", PRIYA)[1]) == 2)
+s, d = call("POST", f"/enquiries/{E1}/events", AMIT, {"kind": "CALL", "text": "Spoke to facilities head, site visit Monday", "nextFollowUp": iso(td + _dt.timedelta(days=3))})
+check("call logged with next follow-up", s == 200 and d["events"][0]["kind"] == "CALL" and d["enquiry"]["nextFollowUp"] == iso(td + _dt.timedelta(days=3)))
+check("empty note refused", call("POST", f"/enquiries/{E1}/events", AMIT, {"kind": "NOTE", "text": ""})[0] == 400)
+s, d = call("POST", f"/enquiries/{E1}/stage", AMIT, {"stage": "SITE_VISIT", "note": "Survey done, 2 DG rooms checked"})
+check("stage -> site visit", s == 200 and d["enquiry"]["stage"] == "SITE_VISIT" and d["events"][0]["kind"] == "STAGE")
+check("future stage date refused", call("POST", f"/enquiries/{E1}/stage", AMIT, {"stage": "NEGOTIATION", "date": iso(td + _dt.timedelta(days=2))})[0] == 400)
+s, qe = call("POST", "/quotations", AMIT, {"businessLine": "GENSET", "enquiryId": E1, "clientName": "Metro Hospital", "capacityKw": 125, "gstPercent": 18,
+             "items": [{"equipment": "125 kVA DG set", "qty": 1, "unitPrice": 1250000}]})
+check("statement linked to the enquiry", s == 200 and qe["enquiryId"] == E1)
+check("statement takes the enquiry's customer", qe["customerId"] == cmetro["id"])
+s, qp = call("POST", "/quotations", PRIYA, {"clientName": "Picked customer", "customerId": c1["id"]})
+check("statement with a picked customer", s == 200 and qp["customerId"] == c1["id"])
+s, ql = call("GET", "/quotations", PRIYA)
+check("statement list shows the customer code", next(x for x in ql if x["id"] == qp["id"])["customerCode"] == "CUST-0001")
+check("customer of another company refused", call("POST", "/quotations", OTHER_T, {"clientName": "x", "customerId": c1["id"]})[0] == 400)
+call("DELETE", f"/quotations/{qp['id']}", ADMIN)
+check("enquiry rows carry the customer code", next(x for x in call("GET", "/enquiries", PRIYA)[1] if x["id"] == E1)["customerCode"] == cmetro["code"])
+
+s, d = call("GET", f"/enquiries/{E1}", AMIT)
+check("first statement moves the enquiry to 'Quotation sent'", d["enquiry"]["stage"] == "QUOTED" and d["quotations"][0]["id"] == qe["id"]
+      and any(x["kind"] == "QUOTATION" for x in d["events"]))
+check("statement cannot be linked to an enquiry you cannot see", call("POST", "/quotations", AMIT, {"clientName": "x", "enquiryId": E2})[0] == 404)
+check("lost needs a reason", call("POST", f"/enquiries/{E2}/stage", PRIYA, {"stage": "LOST"})[0] == 400)
+s, d = call("POST", f"/enquiries/{E2}/stage", PRIYA, {"stage": "LOST", "lostReason": "Price higher than competitor"})
+check("enquiry lost with reason", s == 200 and d["enquiry"]["stage"] == "LOST" and d["enquiry"]["lostReason"] == "Price higher than competitor")
+s, d = call("POST", f"/enquiries/{E1}/stage", AMIT, {"stage": "ORDER", "orderNo": "PO-MH-778", "orderValue": 1475000})
+check("order received (number, value, date, follow-up cleared)", s == 200 and d["enquiry"]["orderNo"] == "PO-MH-778" and d["enquiry"]["orderDate"] == iso(td) and d["enquiry"]["nextFollowUp"] is None)
+for st, field in (("DELIVERED", "deliveryDate"), ("INSTALLED", "installationDate")):
+    s, d = call("POST", f"/enquiries/{E1}/stage", AMIT, {"stage": st})
+    check(f"stage -> {st.lower()} sets its date", s == 200 and d["enquiry"][field] == iso(td))
+wty = iso(td + _dt.timedelta(days=730)); amc = iso(td + _dt.timedelta(days=1825))
+s, d = call("POST", f"/enquiries/{E1}/stage", AMIT, {"stage": "COMMISSIONED", "warrantyUntil": wty, "amcUntil": amc})
+check("commissioned with warranty and AMC dates", s == 200 and d["enquiry"]["commissioningDate"] == iso(td) and d["enquiry"]["warrantyUntil"] == wty and d["enquiry"]["amcUntil"] == amc)
+check("timeline has every step", [x["stage"] for x in d["events"] if x["kind"] == "STAGE"] == ["COMMISSIONED", "INSTALLED", "DELIVERED", "ORDER", "QUOTED", "SITE_VISIT"])
+s, stt = call("GET", "/enquiries/stats", PRIYA)
+check("pipeline stats", s == 200 and stt["byStage"]["COMMISSIONED"] == 1 and stt["byStage"]["LOST"] == 1 and stt["wonThisYear"] == 1
+      and abs(stt["wonValueThisYear"] - 1475000) < 0.01 and stt["lostThisYear"] == 1, stt)
+s, e3 = enq(PRIYA, {"customerId": c1["id"], "title": "Follow-up due today", "nextFollowUp": iso(td - _dt.timedelta(days=1)), "expectedValue": 100000})
+s, stt = call("GET", "/enquiries/stats", PRIYA)
+check("overdue follow-up listed, open value counted", [x["id"] for x in stt["followUps"]] == [e3["enquiry"]["id"]] and abs(stt["openValue"] - 100000) < 0.01)
+s, fl = call("GET", "/enquiries", PRIYA, params={"stage": "LOST"})
+check("list filter by stage", [x["id"] for x in fl] == [E2])
+s, h = call("GET", f"/customers/{cmetro['id']}/history", PRIYA)
+check("customer history: enquiry, its statement and the older same-name statement", s == 200 and h["enquiryIds"] == [E1]
+      and [x["id"] for x in h["statements"]] == [qe["id"], q4["id"]] and h["statements"][1]["enquiryId"] is None, h if s == 200 else s)
+check("customer with enquiries cannot be deleted", call("DELETE", f"/customers/{cmetro['id']}", PRIYA)[0] == 409)
+check("no CUSTOMERS rights: enquiries refused", call("GET", "/enquiries", REENA)[0] == 403)
+check("sales exec cannot delete an enquiry", call("DELETE", f"/enquiries/{E1}", AMIT)[0] == 403)
+s, e4 = enq(PRIYA, {"customerId": c1["id"], "title": "Temporary"})
+s, q4 = call("POST", "/quotations", PRIYA, {"clientName": "Shree Sai Industries", "enquiryId": e4["enquiry"]["id"]})
+check("deleting an enquiry keeps its statement, unlinked", call("DELETE", f"/enquiries/{e4['enquiry']['id']}", PRIYA)[0] == 200
+      and call("GET", f"/quotations/{q4['id']}", PRIYA)[1]["enquiryId"] is None)
+call("DELETE", f"/quotations/{q4['id']}", ADMIN)
+s, a = call("GET", "/admin/activity/audit", ADMIN, params={"q": "ENQ/", "size": 200})
+check("enquiry changes in the audit trail", s == 200 and a["total"] >= 8)
+
 # ---------------------------------------------------------------- 12. other company is isolated
 print("\n== Tenant isolation")
 s, r = call("POST", "/auth/register", body={"email": "owner@othersolar.local", "password": "Other@2026x", "companyName": "Other Solar"})
@@ -495,6 +623,8 @@ check("second company registered", s == 200 and r["portal"] == "ADMIN")
 check("other company sees no quotations", ids(OTHER) == [])
 check("other company sees no customers", call("GET", "/customers", OTHER)[1] == [])
 check("other company cannot open our customer (404)", call("GET", f"/customers/{c1['id']}", OTHER)[0] == 404)
+check("other company sees no enquiries", call("GET", "/enquiries", OTHER)[1] == [])
+check("other company cannot open our enquiry (404)", call("GET", f"/enquiries/{E1}", OTHER)[0] == 404)
 check("other company sees no products or parts", call("GET", "/products", OTHER)[1] == [] and call("GET", "/parts", OTHER)[1] == [])
 check("other company cannot use our part", call("POST", "/products", OTHER, {"businessLine": "GENSET", "name": "Steal", "parts": [{"partId": eng["id"], "qty": 1}]})[0] == 400)
 check("other company cannot open our product (404)", call("GET", f"/products/{g1['id']}", OTHER)[0] == 404)

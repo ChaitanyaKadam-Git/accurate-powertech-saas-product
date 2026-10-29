@@ -9,6 +9,7 @@ public interface QuotationRepo extends JpaRepository<Quotation, Long> {
     List<Quotation> findByOwnerIdOrderByIdDesc(Long ownerId);
     List<Quotation> findByOwnerIdAndCreatedByOrderByIdDesc(Long ownerId, Long createdBy);
     Optional<Quotation> findByIdAndOwnerId(Long id, Long ownerId);
+    List<Quotation> findByOwnerIdAndEnquiryIdOrderByIdDesc(Long ownerId, Long enquiryId);
     @Query("select q.refNo from Quotation q where q.ownerId = :ownerId and q.refNo like :pattern")
     List<String> findRefNos(Long ownerId, String pattern);
 }

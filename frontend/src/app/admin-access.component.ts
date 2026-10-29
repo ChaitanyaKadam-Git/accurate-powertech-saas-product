@@ -12,7 +12,7 @@ import { RightsMatrixComponent } from './rights-matrix.component';
   imports: [FormsModule, RouterLink, IconComponent, RightsMatrixComponent],
   template: `
     <div class="page-h">
-      <div><h1>Grant access</h1><p class="muted">Choose a user, give them a role, then tick exactly the rights they need. Saving applies both together.</p></div>
+      <div><h1>Grant access</h1><p class="muted">Give a user a role and exactly the rights they need.</p></div>
     </div>
 
     <div class="card">

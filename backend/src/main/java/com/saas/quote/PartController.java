@@ -6,11 +6,19 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 
 /** Masters > Parts. Part of the product master, so it uses the PRODUCTS rights. */
 @RestController @RequestMapping("/api/parts") @RequiredArgsConstructor @Transactional
@@ -18,6 +26,7 @@ public class PartController {
     private final PartRepo repo;
     private final StorageService storage;
     private final AuditService audit;
+    private final PartImportService importer;
 
     record Save(String name, String category, String businessLine, String specification, String make, String uom,
                 BigDecimal unitPrice, String hsnCode, String imageKey, Boolean active) {}
@@ -74,6 +83,74 @@ public class PartController {
         audit.log(me, AppModule.PRODUCTS, "DELETE", "Part", p.getId(), describe(p));
         repo.delete(p);
     }
+
+    // ------------------------------------------------------------------ import from Excel / CSV
+    record ImportRow(int row, String name, String make, String category, String uom, BigDecimal unitPrice, String line,
+                     String status, List<String> errors) {}   // status: NEW | UPDATE | ERROR
+    record ImportReport(boolean committed, boolean update, int total, int newCount, int updateCount, int invalid,
+                        int created, int updated, List<ImportRow> rows) {}
+
+    @GetMapping("/import/template") @Requires(module = AppModule.PRODUCTS, right = Right.CREATE)
+    public ResponseEntity<byte[]> template(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "xlsx") String format) throws IOException {
+        boolean csv = "csv".equalsIgnoreCase(format);
+        List<String> cats = repo.findByTenantIdOrderByCategoryAscNameAsc(me.tenantId()).stream()
+                .map(Part::getCategory).filter(c -> c != null && !c.isBlank()).distinct().sorted().toList();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"parts-import-template." + (csv ? "csv" : "xlsx") + "\"")
+                .contentType(csv ? MediaType.parseMediaType("text/csv") : MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(csv ? importer.templateCsv() : importer.templateXlsx(cats));
+    }
+
+    /**
+     * commit=false: check only, nothing is saved. commit=true: create the NEW rows and, with update=true, update the parts
+     * that already exist (same name + make). Rows with errors are always skipped.
+     */
+    @PostMapping("/import") @Requires(module = AppModule.PRODUCTS, right = Right.CREATE)
+    public ImportReport importParts(@AuthenticationPrincipal AuthUser me, @RequestParam("file") MultipartFile file,
+                                    @RequestParam(defaultValue = "false") boolean commit, @RequestParam(defaultValue = "false") boolean update) {
+        if (update && !me.can(AppModule.PRODUCTS, Right.EDIT))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to edit (" + AppModule.PRODUCTS.label + ")");
+        List<PartImportService.Row> in = importer.read(file);
+        Set<String> seen = new HashSet<>();
+        List<ImportRow> out = new ArrayList<>();
+        int news = 0, updates = 0, created = 0, updated = 0, priceChanges = 0;
+        for (PartImportService.Row r : in) {
+            List<String> errs = new ArrayList<>(r.errors());
+            String make = r.make().isBlank() ? null : r.make();
+            Part existing = null;
+            if (!r.name().isBlank()) {
+                if (!seen.add(r.name().toLowerCase() + "|" + (make == null ? "" : make.toLowerCase()))) errs.add("Same part name and make appear earlier in the file");
+                else existing = repo.findSame(me.tenantId(), r.name(), make).stream().findFirst().orElse(null);
+                if (existing != null && !update) errs.add("Part already exists. Tick \"Update existing parts\" to change it");
+            }
+            String status = !errs.isEmpty() ? "ERROR" : existing != null ? "UPDATE" : "NEW";
+            if (status.equals("NEW")) news++;
+            if (status.equals("UPDATE")) updates++;
+            if (commit && !status.equals("ERROR")) {
+                Part p = existing != null ? existing : new Part();
+                if (existing == null) { p.setTenantId(me.tenantId()); p.setCreatedBy(me.userId()); p.setCreatedAt(Instant.now()); p.setActive(true); }
+                else if (p.getUnitPrice() == null || p.getUnitPrice().compareTo(r.unitPrice()) != 0) priceChanges++;
+                p.setName(r.name());
+                p.setMake(make);
+                if (!r.category().isBlank() || existing == null) p.setCategory(blankToNull(r.category()));
+                if (!r.specification().isBlank() || existing == null) p.setSpecification(blankToNull(r.specification()));
+                p.setUom(r.uom().isBlank() ? (existing != null && p.getUom() != null ? p.getUom() : "Nos.") : r.uom());
+                p.setUnitPrice(r.unitPrice());
+                if (!r.hsn().isBlank() || existing == null) p.setHsnCode(blankToNull(r.hsn()));
+                p.setBusinessLine(r.line());
+                p.setUpdatedAt(Instant.now());
+                repo.save(p);
+                if (existing == null) created++; else updated++;
+            }
+            out.add(new ImportRow(r.row(), r.name(), make, blankToNull(r.category()), blankToNull(r.uom()), r.unitPrice(), r.line(), status, errs));
+        }
+        int invalid = in.size() - news - updates;
+        if (commit) audit.log(me, AppModule.PRODUCTS, "IMPORT", "Part", null, file.getOriginalFilename() + ": " + created + " created, " + updated
+                + " updated (" + priceChanges + " price change(s)), " + invalid + " skipped");
+        return new ImportReport(commit, update, in.size(), news, updates, invalid, created, updated, out);
+    }
+
+    private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
 
     private Part find(Long id, AuthUser me) {
         return repo.findByIdAndTenantId(id, me.tenantId()).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Part not found"));
