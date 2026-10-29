@@ -115,9 +115,9 @@ public class AdminUserController {
     }
 
     private void assertMobileFree(Long tenantId, String mobile, Long exceptId) {
-        String d = UserImportService.digits(mobile);
+        String d = UserImportService.mobileKey(mobile);
         for (AppUser x : users.findByTenantIdOrderByIdDesc(tenantId))
-            if (!x.getId().equals(exceptId) && d.equals(UserImportService.digits(x.getMobile())))
+            if (!x.getId().equals(exceptId) && d.equals(UserImportService.mobileKey(x.getMobile())))
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "That mobile number is already used by " + x.displayName());
     }
 
@@ -217,7 +217,7 @@ public class AdminUserController {
         for (Role r : roles.findByTenantIdOrderByName(me.tenantId())) byName.put(r.getName().toLowerCase(), r);
         Set<String> seenEmail = new HashSet<>(), seenMobile = new HashSet<>();
         Set<String> dbMobile = new HashSet<>();
-        for (AppUser x : users.findByTenantIdOrderByIdDesc(me.tenantId())) if (x.getMobile() != null) dbMobile.add(UserImportService.digits(x.getMobile()));
+        for (AppUser x : users.findByTenantIdOrderByIdDesc(me.tenantId())) if (x.getMobile() != null) dbMobile.add(UserImportService.mobileKey(x.getMobile()));
 
         List<RowResult> out = new ArrayList<>();
         int valid = 0, created = 0;
@@ -225,7 +225,7 @@ public class AdminUserController {
             List<String> errs = new ArrayList<>(UserImportService.check(r.name(), r.email(), r.mobile(), r.role()));
             Role role = r.role().isBlank() ? null : byName.get(r.role().toLowerCase());
             if (!r.role().isBlank() && role == null) errs.add("Role \"" + r.role() + "\" does not exist");
-            String email = r.email().toLowerCase(), mob = UserImportService.digits(r.mobile());
+            String email = r.email().toLowerCase(), mob = UserImportService.mobileKey(r.mobile());
             if (!email.isBlank()) {
                 if (!seenEmail.add(email)) errs.add("Duplicate email within the file");
                 else if (users.existsByEmail(email)) errs.add("Email is already registered");
