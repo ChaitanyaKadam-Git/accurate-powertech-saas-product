@@ -15,6 +15,8 @@ import java.util.regex.Pattern;
 public class CustomerController {
     private final CustomerRepo repo;
     private final AuditService audit;
+    private final EnquiryRepo enquiries;
+    private final QuotationRepo quotations;
 
     static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     static final Pattern GSTIN = Pattern.compile("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$");
@@ -57,8 +59,27 @@ public class CustomerController {
     @DeleteMapping("/{id}") @Requires(module = AppModule.CUSTOMERS, right = Right.DELETE)
     public void delete(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
         Customer c = find(id, me);
+        if (enquiries.existsByTenantIdAndCustomerId(me.tenantId(), c.getId()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "\"" + c.getName() + "\" has enquiries. Delete or move those first.");
         audit.log(me, AppModule.CUSTOMERS, "DELETE", "Customer", c.getId(), c.getName());
         repo.delete(c);
+    }
+
+    record StatementRef(Long id, String refNo, String businessLine, java.time.LocalDate quoteDate, java.math.BigDecimal total, Long enquiryId) {}
+    record History(Customer customer, List<Long> enquiryIds, List<StatementRef> statements) {}
+
+    /** Statements for this customer: those made for one of its enquiries, plus older ones with the same client name. */
+    @GetMapping("/{id}/history") @Requires(module = AppModule.CUSTOMERS, right = Right.VIEW)
+    public History history(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
+        Customer c = find(id, me);
+        List<Long> eids = enquiries.findByTenantIdAndCustomerIdOrderByIdDesc(me.tenantId(), c.getId()).stream().map(Enquiry::getId).toList();
+        java.util.Set<Long> idset = new java.util.HashSet<>(eids);
+        List<StatementRef> st = (me.seesAllQuotations() ? quotations.findByOwnerIdOrderByIdDesc(me.tenantId())
+                        : quotations.findByOwnerIdAndCreatedByOrderByIdDesc(me.tenantId(), me.userId())).stream()
+                .filter(q -> (q.getEnquiryId() != null && idset.contains(q.getEnquiryId()))
+                        || (q.getEnquiryId() == null && q.getClientName() != null && q.getClientName().trim().equalsIgnoreCase(c.getName())))
+                .map(q -> new StatementRef(q.getId(), q.getRefNo(), q.getBusinessLine(), q.getQuoteDate(), q.getTotal(), q.getEnquiryId())).toList();
+        return new History(c, eids, st);
     }
 
     private Customer find(Long id, AuthUser me) {

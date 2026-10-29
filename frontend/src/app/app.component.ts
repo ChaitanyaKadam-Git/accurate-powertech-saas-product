@@ -36,6 +36,7 @@ function labelTables() {
               <div class="group">Workspace</div>
             }
             <a routerLink="/" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }"><app-icon name="dashboard" /><span>Dashboard</span></a>
+            @if (auth.can('CUSTOMERS', 'VIEW')) { <a routerLink="/enquiries" routerLinkActive="on"><app-icon name="funnel" /><span>Enquiries</span></a> }
             @if (auth.can('QUOTATIONS', 'VIEW')) { <a routerLink="/statements" routerLinkActive="on"><app-icon name="file" /><span>Statements</span></a> }
             @if (auth.can('QUOTATIONS', 'CREATE')) { <a routerLink="/quote/new" routerLinkActive="on"><app-icon name="plus" /><span>New statement</span></a> }
             @if (auth.can('CUSTOMERS', 'VIEW') || auth.can('PRODUCTS', 'VIEW')) { <div class="group">Masters</div> }
@@ -119,6 +120,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (u.startsWith('/statements')) return 'Statements';
     if (u.startsWith('/quote')) return 'Statement';
     if (u.startsWith('/customers')) return 'Customers';
+    if (u.startsWith('/enquiries')) return 'Enquiries';
     if (u.startsWith('/products')) return 'Products';
     if (u.startsWith('/parts')) return 'Parts';
     if (u.startsWith('/settings')) return 'Settings';

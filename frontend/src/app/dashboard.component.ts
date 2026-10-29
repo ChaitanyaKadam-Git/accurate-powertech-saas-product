@@ -1,7 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Api, Summary } from './api';
+import { Api, EnquiryStats, STAGES, Summary } from './api';
 import { AuthService } from './auth';
 import { BrandService } from './brand';
 import { IconComponent } from './icon.component';
@@ -18,6 +18,23 @@ import { IconComponent } from './icon.component';
       </div>
       @if (auth.can('QUOTATIONS', 'CREATE')) { <a class="btn big" routerLink="/quote/new"><app-icon name="plus" [size]="18" /> New statement</a> }
     </div>
+    @if (flow) {
+      <div class="card">
+        <div class="card-h"><div><h3>Customer flow</h3><p>Open enquiries by stage and follow-ups that are due.</p></div><a routerLink="/enquiries">Open enquiries</a></div>
+        <div class="flowbar">
+          @for (s of stages; track s.key) { <a routerLink="/enquiries" class="flowstep" [class.lost]="s.key === 'LOST'"><b>{{ flow.byStage[s.key] || 0 }}</b><small>{{ s.label }}</small></a> }
+        </div>
+        @if (flow.followUps.length) {
+          <h4 style="margin:16px 0 6px">Follow-ups due ({{ flow.followUps.length }})</h4>
+          @for (e of flow.followUps.slice(0, 6); track e.id) {
+            <div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">
+              <a [routerLink]="['/enquiries', e.id]"><b>{{ e.refNo }}</b> {{ e.customerName }}</a><span class="small">{{ e.title }}</span>
+              <span class="badge off">{{ e.nextFollowUp | date: 'dd MMM' }}</span>
+            </div>
+          }
+        } @else { <p class="muted" style="margin-top:12px">No follow-ups due.</p> }
+      </div>
+    }
     @if (!auth.can('QUOTATIONS', 'VIEW')) {
       <div class="card"><h3>Welcome, {{ auth.userName() }}</h3><p class="muted">Your account does not have access to quotations yet. Ask your administrator to grant the rights you need.</p></div>
     } @else {
@@ -58,9 +75,14 @@ export class DashboardComponent implements OnInit {
   auth = inject(AuthService);
   brand = inject(BrandService);
   rows: Summary[] = [];
+  flow: EnquiryStats | null = null;
+  stages = STAGES;
   today = new Date();
 
-  ngOnInit() { if (this.auth.can('QUOTATIONS', 'VIEW')) this.api.list().subscribe(r => (this.rows = r)); }
+  ngOnInit() {
+    if (this.auth.can('QUOTATIONS', 'VIEW')) this.api.list().subscribe(r => (this.rows = r));
+    if (this.auth.can('CUSTOMERS', 'VIEW')) this.api.enquiryStats().subscribe({ next: s => (this.flow = s), error: () => (this.flow = null) });
+  }
 
   get greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
   get total() { return this.rows.reduce((s, r) => s + (r.total || 0), 0); }

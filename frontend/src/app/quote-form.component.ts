@@ -1,7 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Api, CatalogEntry, Customer, Item, LINES, Part, Product, QSection, Summary, lineOf } from './api';
 import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
@@ -11,9 +11,10 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
 
 @Component({
   standalone: true,
-  imports: [ReactiveFormsModule, FormsModule, DecimalPipe, ImagePickerComponent],
+  imports: [ReactiveFormsModule, FormsModule, DecimalPipe, ImagePickerComponent, RouterLink],
   template: `
-    <h2>{{ id ? 'Edit statement' : 'New statement' }} <span class="badge">{{ line.label }}</span></h2>
+    <h2>{{ id ? 'Edit statement' : 'New statement' }} <span class="badge">{{ line.label }}</span>
+      @if (enquiryRef) { <a class="badge" [routerLink]="['/enquiries', form.value.enquiryId]">For {{ enquiryRef }}</a> }</h2>
 
     @if (!id) {
       <div class="card">
@@ -216,10 +217,12 @@ export class QuoteFormComponent implements OnInit {
   get lineParts() { const l = this.form.value.businessLine || 'SOLAR'; return this.masterParts.filter(p => p.active && (p.businessLine === 'BOTH' || p.businessLine === l)); }
   get lineProducts() { return this.products.filter(p => p.active && p.businessLine === (this.form.value.businessLine || 'SOLAR')); }
   lines = LINES;
+  enquiryRef = '';
   get line() { return lineOf(this.form.value.businessLine); }
 
   form = this.fb.nonNullable.group({
     businessLine: 'SOLAR',
+    enquiryId: null as number | null,
     refNo: '',
     quoteDate: localDate(),
     clientName: ['', Validators.required],
@@ -246,6 +249,8 @@ export class QuoteFormComponent implements OnInit {
     const p = this.route.snapshot.paramMap.get('id');
     if (!p) {
       this.api.list().subscribe(l => (this.previous = l));
+      const enq = Number(this.route.snapshot.queryParamMap.get('enquiry'));
+      if (enq) { this.fromEnquiry(enq); return; }
       // a new statement starts with the company's standard sections of the chosen line
       this.api.template(this.form.value.businessLine!).subscribe(t => this.setSections(t));
       return;
@@ -254,6 +259,8 @@ export class QuoteFormComponent implements OnInit {
     this.api.get(this.id).subscribe(q => {
       const { items, sections, ...rest } = q;
       this.form.patchValue(this.clean(rest));
+      this.form.patchValue({ enquiryId: q.enquiryId ?? null });
+      if (q.enquiryId) this.api.enquiry(q.enquiryId).subscribe({ next: d => (this.enquiryRef = d.enquiry.refNo ?? ''), error: () => (this.enquiryRef = '') });
       items.forEach(i => { this.items.push(this.newItem(i)); if (i.imageKey) this.loadPreview(i.imageKey); });
       this.setSections(sections);
     });
@@ -348,6 +355,23 @@ export class QuoteFormComponent implements OnInit {
     if (e.imageKey) this.loadPreview(e.imageKey);
   }
 
+  /** New statement for an enquiry: its line, customer details and capacity, and the link back to it. */
+  private fromEnquiry(id: number) {
+    this.api.enquiry(id).subscribe({
+      next: d => {
+        const l = lineOf(d.enquiry.businessLine), c = d.customer;
+        this.enquiryRef = d.enquiry.refNo ?? '';
+        this.form.patchValue({
+          enquiryId: d.enquiry.id!, businessLine: l.key, gstPercent: l.gst, capacityKw: d.enquiry.capacity ?? l.capacity,
+          clientName: c?.name ?? '', clientAddress: c?.address ?? '', contactPerson: c?.contactPerson ?? '',
+          phone: (c?.phone ?? '').replace(/\D/g, '').slice(0, 10), projectLocation: c?.city ?? '',
+        });
+        this.api.template(l.key).subscribe(t => this.setSections(t));
+      },
+      error: () => this.api.template(this.form.value.businessLine!).subscribe(t => this.setSections(t)),
+    });
+  }
+
   /** New statement only: switching the line reloads its standard sections and the line's capacity and GST defaults. */
   setLine(key: string) {
     if (key === this.form.value.businessLine) return;
@@ -440,7 +464,7 @@ export class QuoteFormComponent implements OnInit {
     const raw: any = this.form.getRawValue();
     const body: any = { ...raw, sections: raw.sections.map((x: any, n: number) => ({ ...x, position: n })), id: this.id };
     this.api.save(body).subscribe({
-      next: q => { if (downloadPdf) this.api.download(q.id!, q.refNo); this.router.navigate(['/statements']); },
+      next: q => { if (downloadPdf) this.api.download(q.id!, q.refNo); this.router.navigate(q.enquiryId ? ['/enquiries', q.enquiryId] : ['/statements']); },
       error: e => (this.error = (e.status === 403 || e.status === 400) && e.error?.message ? e.error.message : 'The statement could not be saved. Try again.'),
     });
   }

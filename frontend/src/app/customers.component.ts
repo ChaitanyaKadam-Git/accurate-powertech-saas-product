@@ -1,6 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Api, Customer } from './api';
 import { AuthService } from './auth';
 import { IconComponent } from './icon.component';
@@ -10,7 +11,7 @@ const EMPTY: Customer = { name: '', contactPerson: '', phone: '', email: '', gst
 /** Masters > Customers: the clients a company quotes for. Picked in the statement form to fill the client details. */
 @Component({
   standalone: true,
-  imports: [FormsModule, DatePipe, IconComponent],
+  imports: [FormsModule, DatePipe, IconComponent, RouterLink],
   template: `
     <div class="page-h">
       <div><h1>Customers</h1><p class="muted">Clients you prepare statements for. Pick one in a new statement to fill in the client details.</p></div>
@@ -28,7 +29,7 @@ const EMPTY: Customer = { name: '', contactPerson: '', phone: '', email: '', gst
         <tbody>
           @for (c of shown; track c.id) {
             <tr>
-              <td class="w-main"><b>{{ c.name }}</b>@if (c.address) { <br /><span class="muted small clip" [title]="c.address">{{ c.address }}</span> }</td>
+              <td class="w-main"><a [routerLink]="['/customers', c.id]"><b>{{ c.name }}</b></a>@if (c.address) { <br /><span class="muted small clip" [title]="c.address">{{ c.address }}</span> }</td>
               <td>{{ c.contactPerson || '-' }}@if (c.phone) { <br /><span class="muted small nowrap">{{ c.phone }}</span> }</td>
               <td class="small break">{{ c.email || '-' }}@if (c.gstin) { <br /><span class="muted nowrap">GSTIN {{ c.gstin }}</span> }</td>
               <td>{{ c.city || '-' }}</td>

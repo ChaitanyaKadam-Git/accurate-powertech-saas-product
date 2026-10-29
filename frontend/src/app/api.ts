@@ -13,18 +13,52 @@ export const LINES = [
 export type LineKey = typeof LINES[number]['key'];
 export const lineOf = (k?: string | null) => LINES.find(l => l.key === k) ?? LINES[0];
 
+/** Customer flow stages, in order (server: EnquiryStage). */
+export const STAGES = [
+  { key: 'NEW', label: 'New enquiry' },
+  { key: 'SITE_VISIT', label: 'Site visit / survey' },
+  { key: 'QUOTED', label: 'Quotation sent' },
+  { key: 'NEGOTIATION', label: 'Negotiation' },
+  { key: 'ORDER', label: 'Order received' },
+  { key: 'DELIVERED', label: 'Delivered' },
+  { key: 'INSTALLED', label: 'Installed' },
+  { key: 'COMMISSIONED', label: 'Commissioned' },
+  { key: 'LOST', label: 'Lost' },
+] as const;
+export const stageOf = (k?: string | null) => STAGES.find(s => s.key === k) ?? STAGES[0];
+export const SOURCES = ['Website', 'Phone call', 'Email', 'Referral', 'Repeat customer', 'Walk-in', 'Tender', 'Exhibition', 'Other'];
+
+export interface Enquiry {
+  id?: number; refNo?: string; businessLine: string; customerId: number | null; title: string; capacity: number | null; source: string;
+  ownerId: number | null; stage?: string; stageDate?: string; expectedValue: number | null; nextFollowUp: string | null; lostReason?: string | null;
+  orderNo?: string | null; orderDate?: string | null; orderValue?: number | null; deliveryDate?: string | null; installationDate?: string | null;
+  commissioningDate?: string | null; warrantyUntil?: string | null; amcUntil?: string | null; notes: string; createdAt?: string; updatedAt?: string;
+}
+export interface EnquiryRow {
+  id: number; refNo: string; businessLine: string; customerId: number; customerName: string; city: string | null; title: string;
+  capacity: number | null; source: string | null; ownerId: number | null; ownerName: string | null; stage: string; stageLabel: string;
+  stageDate: string | null; expectedValue: number | null; nextFollowUp: string | null; orderValue: number | null; quotationCount: number; updatedAt: string;
+}
+export interface EnquiryEvent { id: number; kind: string; stage: string | null; eventDate: string; text: string; userName: string; at: string; }
+export interface EnquiryDetail {
+  enquiry: Enquiry; customer: Customer | null; ownerName: string | null; stageLabel: string; events: EnquiryEvent[];
+  quotations: { id: number; refNo: string; quoteDate: string; total: number }[];
+}
+export interface EnquiryStats { byStage: Record<string, number>; openValue: number; wonValueThisYear: number; wonThisYear: number; lostThisYear: number; followUps: EnquiryRow[]; }
+export interface CustomerHistory { customer: Customer; enquiryIds: number[]; statements: { id: number; refNo: string; businessLine: string; quoteDate: string; total: number; enquiryId: number | null }[]; }
+
 export interface QSection {
   id?: number; position?: number; kind: string; title: string; content: string; style: string;
   visible: boolean; imageColumns: number; imageKeys: string[];
 }
 export interface Quote {
-  id?: number; businessLine: string; refNo: string; quoteDate: string; clientName: string; clientAddress: string;
+  id?: number; businessLine: string; enquiryId?: number | null; refNo: string; quoteDate: string; clientName: string; clientAddress: string;
   contactPerson: string; phone: string; projectLocation: string; capacityKw: number; gstPercent: number;
   showItemPrices: boolean; sections: QSection[];
   coverImageKey: string; signatoryName: string; signatoryTitle: string; signatoryPhone: string; signatoryEmail: string;
   items: Item[];
 }
-export interface Summary { id: number; businessLine: string; refNo: string; clientName: string; projectLocation: string; quoteDate: string; total: number; createdBy: string; }
+export interface Summary { id: number; businessLine: string; enquiryId?: number | null; refNo: string; clientName: string; projectLocation: string; quoteDate: string; total: number; createdBy: string; }
 export interface Section { id: number; sectionKey: string; businessLine?: string; title: string; content: string; }
 export interface Company {
   companyName: string; address: string; logoKey: string | null; coverImageKey: string | null; diagramImageKey: string | null;
@@ -110,6 +144,17 @@ export class Api {
   saveCompany(c: Company) { return this.http.put<Company>('/api/company', c); }
   catalog() { return this.http.get<CatalogEntry[]>('/api/catalog'); }
 
+  enquiries(params: Record<string, string> = {}) { return this.http.get<EnquiryRow[]>('/api/enquiries', { params }); }
+  enquiry(id: number) { return this.http.get<EnquiryDetail>(`/api/enquiries/${id}`); }
+  enquiryStats() { return this.http.get<EnquiryStats>('/api/enquiries/stats'); }
+  enquiryOwners() { return this.http.get<{ id: number; name: string }[]>('/api/enquiries/owners'); }
+  saveEnquiry(e: Enquiry) { return e.id ? this.http.put<EnquiryDetail>(`/api/enquiries/${e.id}`, e) : this.http.post<EnquiryDetail>('/api/enquiries', e); }
+  moveEnquiry(id: number, body: { stage: string; date?: string | null; note?: string; lostReason?: string; orderNo?: string; orderValue?: number | null; warrantyUntil?: string | null; amcUntil?: string | null }) {
+    return this.http.post<EnquiryDetail>(`/api/enquiries/${id}/stage`, body);
+  }
+  addEnquiryNote(id: number, body: { kind: string; date?: string | null; text: string; nextFollowUp?: string | null }) { return this.http.post<EnquiryDetail>(`/api/enquiries/${id}/events`, body); }
+  deleteEnquiry(id: number) { return this.http.delete(`/api/enquiries/${id}`); }
+  customerHistory(id: number) { return this.http.get<CustomerHistory>(`/api/customers/${id}/history`); }
   customers() { return this.http.get<Customer[]>('/api/customers'); }
   saveCustomer(c: Customer) { return c.id ? this.http.put<Customer>(`/api/customers/${c.id}`, c) : this.http.post<Customer>('/api/customers', c); }
   parts(line?: string) { return this.http.get<Part[]>('/api/parts', { params: line ? { line } : {} }); }
