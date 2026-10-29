@@ -6,6 +6,7 @@ import { DashboardComponent } from './dashboard.component';
 import { QuoteListComponent } from './quote-list.component';
 import { QuoteFormComponent } from './quote-form.component';
 import { SectionsComponent } from './sections.component';
+import { CustomersComponent } from './customers.component';
 import { AdminOverviewComponent } from './admin-overview.component';
 import { AdminUsersComponent } from './admin-users.component';
 import { AdminUserDetailComponent } from './admin-user-detail.component';
@@ -21,6 +22,7 @@ export const routes: Routes = [
       { path: 'statements', component: QuoteListComponent, canActivate: [permGuard('QUOTATIONS', 'VIEW')] },
       { path: 'quote/new', component: QuoteFormComponent, canActivate: [permGuard('QUOTATIONS', 'CREATE')] },
       { path: 'quote/:id', component: QuoteFormComponent, canActivate: [permGuard('QUOTATIONS', 'VIEW')] },
+      { path: 'customers', component: CustomersComponent, canActivate: [permGuard('CUSTOMERS', 'VIEW')] },
       { path: 'settings', component: SectionsComponent },
       {
         path: 'admin', canActivate: [adminGuard], children: [

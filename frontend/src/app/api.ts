@@ -22,6 +22,10 @@ export interface Company {
   companyName: string; address: string; logoKey: string | null; coverImageKey: string | null; diagramImageKey: string | null;
   signatoryName: string; signatoryTitle: string; signatoryPhone: string; signatoryEmail: string;
 }
+export interface Customer {
+  id?: number; name: string; contactPerson: string; phone: string; email: string; gstin: string;
+  address: string; city: string; notes: string; createdAt?: string; updatedAt?: string;
+}
 export interface CatalogEntry { equipment: string; specification: string; make: string; uom: string; unitPrice: number; imageKey: string | null; }
 
 export interface DashStats {
@@ -81,6 +85,10 @@ export class Api {
   company() { return this.http.get<Company>('/api/company'); }
   saveCompany(c: Company) { return this.http.put<Company>('/api/company', c); }
   catalog() { return this.http.get<CatalogEntry[]>('/api/catalog'); }
+
+  customers() { return this.http.get<Customer[]>('/api/customers'); }
+  saveCustomer(c: Customer) { return c.id ? this.http.put<Customer>(`/api/customers/${c.id}`, c) : this.http.post<Customer>('/api/customers', c); }
+  deleteCustomer(id: number) { return this.http.delete(`/api/customers/${id}`); }
 
   // ---- administration ----
   adminOverview() { return this.http.get<Overview>('/api/admin/overview'); }

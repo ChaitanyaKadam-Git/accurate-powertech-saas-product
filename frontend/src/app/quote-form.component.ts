@@ -2,7 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Api, CatalogEntry, Item, QSection, Summary } from './api';
+import { Api, CatalogEntry, Customer, Item, QSection, Summary } from './api';
 import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
 
@@ -40,6 +40,14 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
 
     <form [formGroup]="form" (ngSubmit)="save(false)">
       <div class="card grid">
+        @if (customers.length && canSave) {
+          <label class="wide">Customer (fills in the client details below)
+            <select (change)="pickCustomer($any($event.target).value)">
+              <option value="">Select a saved customer</option>
+              @for (c of customers; track c.id) { <option [value]="c.id">{{ c.name }}{{ c.city ? ' - ' + c.city : '' }}</option> }
+            </select>
+          </label>
+        }
         <label>Reference no.<input formControlName="refNo" placeholder="Filled in automatically" /></label>
         <label>Date<input type="date" formControlName="quoteDate" /></label>
         <label>Client name<input formControlName="clientName" /></label>
@@ -174,6 +182,7 @@ export class QuoteFormComponent implements OnInit {
   previews: Record<string, string> = {};
   catalog: CatalogEntry[] = [];
   previous: Summary[] = [];
+  customers: Customer[] = [];
 
   form = this.fb.nonNullable.group({
     refNo: '',
@@ -195,6 +204,7 @@ export class QuoteFormComponent implements OnInit {
 
   ngOnInit() {
     this.api.catalog().subscribe(c => (this.catalog = c));
+    this.api.customers().subscribe({ next: c => (this.customers = c), error: () => (this.customers = []) });
     const p = this.route.snapshot.paramMap.get('id');
     if (!p) {
       this.api.list().subscribe(l => (this.previous = l));
@@ -298,6 +308,16 @@ export class QuoteFormComponent implements OnInit {
     if (!e || g.value.specification || Number(g.value.unitPrice)) return;
     g.patchValue({ specification: e.specification ?? '', make: e.make ?? '', uom: e.uom || 'Nos.', unitPrice: e.unitPrice ?? 0, imageKey: e.imageKey ?? null });
     if (e.imageKey) this.loadPreview(e.imageKey);
+  }
+
+  /** Customer master -> client fields of this statement (the statement keeps its own copy). */
+  pickCustomer(id: string) {
+    const c = this.customers.find(x => String(x.id) === id);
+    if (!c) return;
+    this.form.patchValue({
+      clientName: c.name, clientAddress: c.address ?? '', contactPerson: c.contactPerson ?? '',
+      phone: (c.phone ?? '').replace(/\D/g, '').slice(0, 10), projectLocation: c.city ?? this.form.value.projectLocation ?? '',
+    });
   }
 
   copyFrom(id: string) {
