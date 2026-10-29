@@ -12,7 +12,7 @@ import { IconComponent } from './icon.component';
   template: `
     <div class="hero card">
       <div>
-        <h1>{{ greeting }}, {{ brand.name() }}</h1>
+        <h1>{{ greeting }}, {{ (auth.userName() || brand.name()).split(' ')[0] }}</h1>
         <p class="muted">Turn a client enquiry into a finished proposal PDF.</p>
         <span class="chip"><app-icon name="calendar" [size]="16" /> {{ today | date: 'EEEE, d MMM y' }}</span>
       </div>

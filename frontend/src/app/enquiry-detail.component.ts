@@ -57,7 +57,7 @@ const KIND: Record<string, string> = { CREATED: 'Created', STAGE: 'Stage', CALL:
           <div class="card-h"><div><h3>Details</h3></div>@if (canEdit) { <button class="ghost" (click)="openEdit()">Edit</button> }</div>
           <div class="kv">
             <div><small>Customer</small><b><a [routerLink]="['/customers', d.enquiry.customerId]">{{ d.customer?.name }}</a></b></div>
-            <div><small>Contact</small><b>{{ d.customer?.contactPerson || '-' }} {{ d.customer?.phone ? '· ' + d.customer?.phone : '' }}</b></div>
+            <div><small>Contact</small><b>{{ contactLine || '-' }}</b></div>
             <div><small>Capacity</small><b>{{ d.enquiry.capacity != null ? (d.enquiry.capacity | number: '1.0-2') + ' ' + lineOf(d.enquiry.businessLine).unit : '-' }}</b></div>
             <div><small>Source</small><b>{{ d.enquiry.source || '-' }}</b></div>
             <div><small>Expected value</small><b>{{ d.enquiry.expectedValue != null ? '₹' + (d.enquiry.expectedValue | number: '1.0-0') : '-' }}</b></div>
@@ -181,6 +181,7 @@ export class EnquiryDetailComponent implements OnInit {
   get next() { const p = this.pos; return p >= 0 && p < this.flow.length - 1 ? this.flow[p + 1] : null; }
   get won() { return !!this.d && this.d.enquiry.stage !== 'LOST' && this.pos >= 4; }
   get followUpDue() { return !!this.d?.enquiry.nextFollowUp && this.d.enquiry.nextFollowUp <= today(); }
+  get contactLine() { const c = this.d?.customer; return [c?.contactPerson, c?.phone].filter(Boolean).join(' · '); }
   kindLabel(k: string) { return KIND[k] ?? k; }
   stageLabel(k: string) { return stageOf(k).label; }
   /** Date a stage was reached, from the timeline (latest move into it). */
