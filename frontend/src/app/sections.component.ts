@@ -25,6 +25,7 @@ import { ImagePickerComponent } from './image-picker.component';
         <div class="grid">
           <label>Company name<input [(ngModel)]="c.companyName" /></label>
           <label class="wide">Company address<input [(ngModel)]="c.address" /></label>
+          <label>Company GSTIN (printed on invoices)<input [(ngModel)]="c.gstin" maxlength="15" placeholder="27ABCDE1234F1Z5" (input)="c.gstin = (c.gstin || '').toUpperCase()" /></label>
           <label>Signatory name (for example your manager)<input [(ngModel)]="c.signatoryName" /></label>
           <label>Signatory designation<input [(ngModel)]="c.signatoryTitle" /></label>
           <label>Signatory phone<input [(ngModel)]="c.signatoryPhone" /></label>
@@ -111,7 +112,7 @@ export class SectionsComponent implements OnInit {
   tab = 'company';
   sections: Section[] = [];
   c: Company = { companyName: '', address: '', logoKey: null, coverImageKey: null, diagramImageKey: null,
-    signatoryName: '', signatoryTitle: '', signatoryPhone: '', signatoryEmail: '' };
+    signatoryName: '', signatoryTitle: '', signatoryPhone: '', signatoryEmail: '', gstin: '' };
   saved = false;
   companySaved = false;
   email = ''; newEmail = ''; emailPassword = ''; oldPassword = ''; newPassword = '';
@@ -149,11 +150,11 @@ export class SectionsComponent implements OnInit {
   }
 
   saveCompany() {
-    this.api.saveCompany(this.c).subscribe(() => {
+    this.api.saveCompany(this.c).subscribe({ error: e => alert(e.error?.message || 'Could not save'), next: () => {
       this.brand.refresh();   // refresh the name and logo in the top bar
       this.companySaved = true;
       setTimeout(() => (this.companySaved = false), 2500);
-    });
+    } });
   }
 
   addSection() {

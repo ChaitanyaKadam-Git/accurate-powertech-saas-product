@@ -24,6 +24,7 @@ public class ProductPart {
     public String getSpecification() { return part.getSpecification(); }
     public String getMake() { return part.getMake(); }
     public String getUom() { return part.getUom(); }
+    public String getHsn() { return part.getHsnCode(); }
     public BigDecimal getUnitPrice() { return part.getUnitPrice(); }
     public String getImageKey() { return part.getImageKey(); }
     public boolean isPartActive() { return part.isActive(); }

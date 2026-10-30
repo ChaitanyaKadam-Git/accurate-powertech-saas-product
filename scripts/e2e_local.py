@@ -663,6 +663,40 @@ call("DELETE", f"/quotations/{q4['id']}", ADMIN)
 s, a = call("GET", "/admin/activity/audit", ADMIN, params={"q": "ENQ/", "size": 200})
 check("enquiry changes in the audit trail", s == 200 and a["total"] >= 8)
 
+# ---------------------------------------------------------------- 11e. Proforma and tax invoices
+print("\n== Proforma / tax invoice")
+import os as _os
+comp = call("GET", "/company", ADMIN)[1]
+check("bad company GSTIN refused", call("PUT", "/company", ADMIN, {**comp, "gstin": "123"})[0] == 400)
+s, comp2 = call("PUT", "/company", ADMIN, {**comp, "gstin": "27aabca1234b1z5"})
+check("company GSTIN saved (upper-cased)", s == 200 and comp2["gstin"] == "27AABCA1234B1Z5")
+call("PUT", f"/customers/{cmetro['id']}", PRIYA, {"code": cmetro["code"], "name": "Metro Hospital", "city": "Kothrud", "phone": "9822334455", "gstin": "29AAACM1234C1Z2", "address": "Karve Road, Kothrud, Pune"})
+s, q = call("GET", f"/quotations/{qe['id']}", PRIYA)
+q["items"][0]["hsn"] = "8502"
+s, q = call("PUT", f"/quotations/{qe['id']}", PRIYA, q)
+check("HSN stored on an item", s == 200 and q["items"][0]["hsn"] == "8502")
+s, pi = call("POST", f"/quotations/{qe['id']}/convert", PRIYA, params={"type": "PROFORMA"})
+check("proforma created from the quotation", s == 200 and pi["docType"] == "PROFORMA" and pi["refNo"] == f"PI/{td.year}/1" and pi["sourceId"] == qe["id"]
+      and pi["customerId"] == cmetro["id"] and pi["enquiryId"] == E1 and pi["items"][0]["hsn"] == "8502" and abs(pi["total"] - qe["total"]) < 0.01, (s, pi if s != 200 else pi["refNo"]))
+check("proforma uses the proforma template (no cover, bank details)", not pi["showCover"] and not pi["showLetter"] and any(x["title"] == "Bank details" for x in pi["sections"]))
+check("buyer's PO number taken from the enquiry order", pi["poNo"] == "PO-MH-778")
+s, inv = call("POST", f"/quotations/{pi['id']}/convert", PRIYA, params={"type": "INVOICE"})
+check("tax invoice created from the proforma", s == 200 and inv["docType"] == "INVOICE" and inv["refNo"] == f"INV/{td.year}/1" and inv["sourceId"] == pi["id"])
+check("a tax invoice cannot be converted again", call("POST", f"/quotations/{inv['id']}/convert", PRIYA, params={"type": "PROFORMA"})[0] == 400)
+check("convert to quotation refused", call("POST", f"/quotations/{qe['id']}/convert", PRIYA, params={"type": "QUOTATION"})[0] == 400)
+check("quotation numbering unaffected", call("POST", f"/quotations/{qe['id']}/clone", PRIYA)[1]["refNo"].startswith(f"QTN/{td.year}/"))
+s, lst = call("GET", "/quotations", PRIYA)
+types = {x["refNo"]: x["docType"] for x in lst}
+check("list carries the document type", types.get(pi["refNo"]) == "PROFORMA" and types.get(inv["refNo"]) == "INVOICE")
+s, d = call("GET", f"/enquiries/{E1}", PRIYA)
+check("enquiry shows its documents with types and timeline entries", {x["docType"] for x in d["quotations"]} >= {"QUOTATION", "PROFORMA", "INVOICE"}
+      and any("Tax invoice" in x["text"] for x in d["events"]))
+for doc, name in ((pi, "proforma"), (inv, "invoice")):
+    s, pdf = call("GET", f"/quotations/{doc['id']}/pdf", PRIYA, raw=True)
+    check(f"{name} PDF generated", s == 200 and pdf[:4] == b"%PDF")
+    out = _os.environ.get("E2E_PDF_DIR")
+    if out: open(f"{out}/{name}.pdf", "wb").write(pdf)
+
 # ---------------------------------------------------------------- 12. other company is isolated
 print("\n== Tenant isolation")
 s, r = call("POST", "/auth/register", body={"email": "owner@othersolar.local", "password": "Other@2026x", "companyName": "Other Solar"})

@@ -1,7 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Api, DOC_TYPES, DocTemplate, LINES, TemplateSection, docTypeOf, lineOf } from './api';
+import { Api, DocTemplate, LINES, TemplateSection, VISIBLE_DOC_TYPES, docTypeOf, lineOf } from './api';
 import { AuthService } from './auth';
 import { IconComponent } from './icon.component';
 
@@ -22,15 +22,17 @@ const STYLES = [
   imports: [FormsModule, DatePipe, IconComponent],
   template: `
     <div class="page-h">
-      <div><h1>Templates</h1><p class="muted">Starting text and PDF options for quotations, proforma invoices and tax invoices.</p></div>
+      <div><h1>Templates</h1><p class="muted">Starting sections and PDF options for quotations, several per line.</p></div>
       @if (auth.can('TEMPLATE_DATA', 'CREATE')) { <button (click)="open()"><app-icon name="plus" [size]="18" /> Add template</button> }
     </div>
 
     <div class="card">
       <div class="row" style="margin-bottom:12px; justify-content:flex-start; gap:12px">
-        <div class="seg">
-          @for (t of types; track t.key) { <button type="button" [class.on]="typeF === t.key" (click)="typeF = t.key">{{ t.label }} ({{ count(t.key) }})</button> }
-        </div>
+        @if (types.length > 1) {
+          <div class="seg">
+            @for (t of types; track t.key) { <button type="button" [class.on]="typeF === t.key" (click)="typeF = t.key">{{ t.label }} ({{ count(t.key) }})</button> }
+          </div>
+        }
         <div class="seg">
           <button type="button" [class.on]="lineF === ''" (click)="lineF = ''">All lines</button>
           @for (l of lines; track l.key) { <button type="button" [class.on]="lineF === l.key" (click)="lineF = l.key">{{ l.label }}</button> }
@@ -38,12 +40,12 @@ const STYLES = [
       </div>
       @if (error) { <p class="error">{{ error }}</p> }
       <div class="scroll"><table>
-        <thead><tr><th>Template</th><th>Type</th><th>Line</th><th>PDF title</th><th>Cover</th><th>Letter</th><th>Prices</th><th class="r">Sections</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Template</th>@if (types.length > 1) { <th>Type</th> }<th>Line</th><th>PDF title</th><th>Cover</th><th>Letter</th><th>Prices</th><th class="r">Sections</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           @for (t of shown; track t.id) {
             <tr>
               <td><b>{{ t.name }}</b> @if (t.isDefault) { <span class="badge ok">Default</span> }</td>
-              <td>{{ typeOf(t.docType).label }}</td>
+              @if (types.length > 1) { <td>{{ typeOf(t.docType).label }}</td> }
               <td><span class="badge">{{ lineOf(t.businessLine).label }}</span></td>
               <td>{{ t.pdfTitle || 'Built-in' }}</td>
               <td>{{ t.showCover ? 'Yes' : 'No' }}</td>
@@ -70,7 +72,7 @@ const STYLES = [
           <button class="icon-btn" (click)="close()" aria-label="Close"><app-icon name="x" /></button></div>
         <fieldset class="plain" [disabled]="!editable">
           <div class="row" style="justify-content:flex-start; gap:12px; margin-bottom:12px">
-            <div><span class="lbl">Document type</span><div class="seg">@for (t of types; track t.key) { <button type="button" [class.on]="f.docType === t.key" (click)="f.docType = t.key">{{ t.label }}</button> }</div></div>
+            <div [hidden]="types.length < 2"><span class="lbl">Document type</span><div class="seg">@for (t of types; track t.key) { <button type="button" [class.on]="f.docType === t.key" (click)="f.docType = t.key">{{ t.label }}</button> }</div></div>
             <div><span class="lbl">Business line</span><div class="seg">@for (l of lines; track l.key) { <button type="button" [class.on]="f.businessLine === l.key" (click)="f.businessLine = l.key">{{ l.label }}</button> }</div></div>
           </div>
           <div class="grid">
@@ -123,7 +125,7 @@ const STYLES = [
 export class TemplatesComponent implements OnInit {
   private api = inject(Api);
   auth = inject(AuthService);
-  types = DOC_TYPES; lines = LINES; kinds = KINDS; styles = STYLES;
+  types = VISIBLE_DOC_TYPES; lines = LINES; kinds = KINDS; styles = STYLES;
   lineOf = lineOf; typeOf = docTypeOf;
   rows: DocTemplate[] = [];
   typeF = 'QUOTATION'; lineF = '';

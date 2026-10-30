@@ -42,4 +42,5 @@ public class AppUser {
     private String signatoryTitle;
     private String signatoryPhone;
     private String signatoryEmail;
+    @Column(length = 15) private String gstin;   // company GSTIN, printed on invoices
 }

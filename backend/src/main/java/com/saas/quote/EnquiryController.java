@@ -35,7 +35,7 @@ public class EnquiryController {
     record Row(Long id, String refNo, String businessLine, Long customerId, String customerCode, String customerName, String city, String title,
                BigDecimal capacity, String source, Long ownerId, String ownerName, String stage, String stageLabel, LocalDate stageDate,
                BigDecimal expectedValue, LocalDate nextFollowUp, BigDecimal orderValue, long quotationCount, Instant updatedAt) {}
-    record QuoteRef(Long id, String refNo, LocalDate quoteDate, BigDecimal total) {}
+    record QuoteRef(Long id, String docType, String refNo, LocalDate quoteDate, BigDecimal total) {}
     record Detail(Enquiry enquiry, Customer customer, String ownerName, String stageLabel, List<EnquiryEvent> events, List<QuoteRef> quotations) {}
     record Stats(Map<String, Long> byStage, BigDecimal openValue, BigDecimal wonValueThisYear, long wonThisYear, long lostThisYear, List<Row> followUps) {}
 
@@ -83,7 +83,7 @@ public class EnquiryController {
         Enquiry e = find(id, me);
         Customer c = customers.findByIdAndTenantId(e.getCustomerId(), me.tenantId()).orElse(null);
         List<QuoteRef> q = quotations.findByOwnerIdAndEnquiryIdOrderByIdDesc(me.tenantId(), e.getId()).stream()
-                .map(x -> new QuoteRef(x.getId(), x.getRefNo(), x.getQuoteDate(), x.getTotal())).toList();
+                .map(x -> new QuoteRef(x.getId(), x.getDocType(), x.getRefNo(), x.getQuoteDate(), x.getTotal())).toList();
         return new Detail(e, c, names(me).get(e.getOwnerId()), stage(e).label, events.findByEnquiryIdOrderByIdDesc(e.getId()), q);
     }
 
@@ -190,6 +190,13 @@ public class EnquiryController {
             e.setStage(EnquiryStage.QUOTED.name());
             e.setStageDate(LocalDate.now());
         }
+        e.setUpdatedAt(Instant.now());
+    }
+
+    /** Timeline entry for a proforma / invoice made for this enquiry. */
+    public void documentCreated(AuthUser me, Long enquiryId, Quotation q, String text) {
+        Enquiry e = find(enquiryId, me);
+        event(e, me, "QUOTATION", null, LocalDate.now(), text + ", total Rs. " + q.getTotal().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString());
         e.setUpdatedAt(Instant.now());
     }
 

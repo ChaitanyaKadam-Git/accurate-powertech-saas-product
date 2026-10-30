@@ -22,6 +22,9 @@ public class Quotation {
     private String pdfTitle;                // overrides the built-in PDF title when set
     private boolean showCover = true;
     private boolean showLetter = true;
+    private Long sourceId;                  // proforma / invoice: the document it was created from
+    private String poNo;                    // customer's purchase order reference, printed on invoices
+    private java.time.LocalDate dueDate;    // invoices: payment due date
     private Long customerId;                // the customer master record, when known
     private Long enquiryId;                 // the enquiry (customer flow) this statement was made for, if any
     private String refNo;
