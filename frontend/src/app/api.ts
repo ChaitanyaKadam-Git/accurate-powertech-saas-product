@@ -13,6 +13,20 @@ export const LINES = [
 export type LineKey = typeof LINES[number]['key'];
 export const lineOf = (k?: string | null) => LINES.find(l => l.key === k) ?? LINES[0];
 
+/** Document types (server: DocType). */
+export const DOC_TYPES = [
+  { key: 'QUOTATION', label: 'Quotation', prefix: 'QTN' },
+  { key: 'PROFORMA', label: 'Proforma invoice', prefix: 'PI' },
+  { key: 'INVOICE', label: 'Tax invoice', prefix: 'INV' },
+] as const;
+export const docTypeOf = (k?: string | null) => DOC_TYPES.find(t => t.key === k) ?? DOC_TYPES[0];
+
+export interface TemplateSection { id?: number; position?: number; kind: string; title: string; content: string; style: string; visible: boolean; }
+export interface DocTemplate {
+  id?: number; docType: string; businessLine: string; name: string; isDefault: boolean; active: boolean; pdfTitle: string;
+  showCover: boolean; showLetter: boolean; showPrices: boolean; description: string; sections: TemplateSection[]; updatedAt?: string;
+}
+
 /** Customer flow stages, in order (server: EnquiryStage). */
 export const STAGES = [
   { key: 'NEW', label: 'New enquiry' },
@@ -52,13 +66,14 @@ export interface QSection {
   visible: boolean; imageColumns: number; imageKeys: string[];
 }
 export interface Quote {
-  id?: number; businessLine: string; enquiryId?: number | null; customerId?: number | null; refNo: string; quoteDate: string; clientName: string; clientAddress: string;
+  id?: number; docType?: string; templateId?: number | null; pdfTitle?: string; showCover?: boolean; showLetter?: boolean;
+  businessLine: string; enquiryId?: number | null; customerId?: number | null; refNo: string; quoteDate: string; clientName: string; clientAddress: string;
   contactPerson: string; phone: string; projectLocation: string; capacityKw: number; gstPercent: number;
   showItemPrices: boolean; sections: QSection[];
   coverImageKey: string; signatoryName: string; signatoryTitle: string; signatoryPhone: string; signatoryEmail: string;
   items: Item[];
 }
-export interface Summary { id: number; businessLine: string; enquiryId?: number | null; customerId?: number | null; customerCode?: string | null; refNo: string; clientName: string; projectLocation: string; quoteDate: string; total: number; createdBy: string; }
+export interface Summary { id: number; docType: string; businessLine: string; enquiryId?: number | null; customerId?: number | null; customerCode?: string | null; refNo: string; clientName: string; projectLocation: string; quoteDate: string; total: number; createdBy: string; }
 export interface Section { id: number; sectionKey: string; businessLine?: string; title: string; content: string; }
 export interface Company {
   companyName: string; address: string; logoKey: string | null; coverImageKey: string | null; diagramImageKey: string | null;
@@ -132,7 +147,20 @@ export class Api {
   saveSections(line: string, s: Section[]) { return this.http.put<Section[]>('/api/sections', s, { params: { line } }); }
   resetSections(line: string) { return this.http.post<Section[]>('/api/sections/reset', {}, { params: { line } }); }
 
-  template(line: string) { return this.http.get<QSection[]>('/api/quotations/template', { params: { line } }); }
+  template(line: string, type = 'QUOTATION', templateId?: number | null) {
+    const params: Record<string, string> = { line, type };
+    if (templateId) params['templateId'] = String(templateId);
+    return this.http.get<QSection[]>('/api/quotations/template', { params });
+  }
+  templates(type?: string, line?: string) {
+    const params: Record<string, string> = {};
+    if (type) params['type'] = type;
+    if (line) params['line'] = line;
+    return this.http.get<DocTemplate[]>('/api/templates', { params });
+  }
+  saveTemplate(t: DocTemplate) { return t.id ? this.http.put<DocTemplate>(`/api/templates/${t.id}`, t) : this.http.post<DocTemplate>('/api/templates', t); }
+  cloneTemplate(id: number) { return this.http.post<DocTemplate>(`/api/templates/${id}/clone`, {}); }
+  deleteTemplate(id: number) { return this.http.delete(`/api/templates/${id}`); }
   addSection(line: string, title: string, content: string) { return this.http.post<Section>('/api/sections', { title, content }, { params: { line } }); }
   deleteSection(id: number) { return this.http.delete(`/api/sections/${id}`); }
 

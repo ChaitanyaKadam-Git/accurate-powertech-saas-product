@@ -17,6 +17,11 @@ public class Quotation {
     @JsonIgnore private Long createdBy;     // the person who created it (null on records made before roles existed)
 
     @Column(nullable = false, length = 20) private String businessLine = BusinessLine.SOLAR.name();   // SOLAR | GENSET
+    @Column(nullable = false, length = 20) private String docType = DocType.QUOTATION.name();   // QUOTATION | PROFORMA | INVOICE
+    private Long templateId;                // the template it started from (informational)
+    private String pdfTitle;                // overrides the built-in PDF title when set
+    private boolean showCover = true;
+    private boolean showLetter = true;
     private Long customerId;                // the customer master record, when known
     private Long enquiryId;                 // the enquiry (customer flow) this statement was made for, if any
     private String refNo;

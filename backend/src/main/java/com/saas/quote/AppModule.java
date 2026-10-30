@@ -21,9 +21,9 @@ public enum AppModule {
     PRODUCTS("Products", "Masters", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
     PARTS("Parts", "Masters", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
     CUSTOMERS("Customers", "Masters", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    TEMPLATE_DATA("Templates", "Masters", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
     // Settings
     TEMPLATES("Company details", "Settings", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
-    TEMPLATE_DATA("Standard text", "Settings", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
     // Communication
     EMAIL("Email", "Communication", false, false, Right.VIEW, Right.SEND),
     WHATSAPP("WhatsApp", "Communication", false, false, Right.VIEW, Right.SEND);

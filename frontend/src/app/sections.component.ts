@@ -1,6 +1,6 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Api, Company, LINES, Section, lineOf } from './api';
 import { AuthService } from './auth';
 import { BrandService } from './brand';
@@ -8,7 +8,7 @@ import { ImagePickerComponent } from './image-picker.component';
 
 @Component({
   standalone: true,
-  imports: [FormsModule, ImagePickerComponent],
+  imports: [FormsModule, ImagePickerComponent, RouterLink],
   template: `
     <div class="page-h"><div><h1>Settings</h1><p class="muted">Company details, standard text and your account.</p></div></div>
     <div class="tabs">
@@ -45,6 +45,7 @@ import { ImagePickerComponent } from './image-picker.component';
     }
 
     @if (tab === 'text' && auth.can('TEMPLATE_DATA', 'VIEW')) {
+      <p class="notice">New statements now start from <a routerLink="/templates">Masters › Templates</a> (several per type and line). This standard text was copied into the default quotation templates the first time templates were opened; changing it here only affects templates created afterwards.</p>
       <fieldset class="plain" [disabled]="!auth.can('TEMPLATE_DATA', 'EDIT')">
       <div class="card">
         <div class="seg" style="margin-bottom:14px">

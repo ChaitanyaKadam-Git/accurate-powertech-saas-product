@@ -2,7 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Api, CatalogEntry, Customer, Item, LINES, Part, Product, QSection, Summary, lineOf } from './api';
+import { Api, CatalogEntry, Customer, DocTemplate, Item, LINES, Part, Product, QSection, Summary, docTypeOf, lineOf } from './api';
 import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
 
@@ -127,6 +127,18 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
       </div>
 
       <div class="card">
+        <div class="grid" style="margin-bottom:12px">
+          @if (!id && lineTemplates.length) {
+            <label>Template
+              <select [ngModel]="form.value.templateId" [ngModelOptions]="{ standalone: true }" (ngModelChange)="pickTemplate($event)">
+                @for (t of lineTemplates; track t.id) { <option [ngValue]="t.id">{{ t.name }}{{ t.isDefault ? ' (default)' : '' }}</option> }
+              </select>
+            </label>
+          }
+          <label>Title on the PDF<input formControlName="pdfTitle" placeholder="Empty = built-in title" /></label>
+          <label class="check"><input type="checkbox" formControlName="showCover" /> Cover page</label>
+          <label class="check"><input type="checkbox" formControlName="showLetter" /> Cover letter</label>
+        </div>
         <image-picker label="Cover page image for this statement (leave empty to use the company default)"
           [key]="form.value.coverImageKey" (keyChange)="form.patchValue({ coverImageKey: $event ?? '' })" />
         <details>
@@ -216,6 +228,8 @@ export class QuoteFormComponent implements OnInit {
   catalog: CatalogEntry[] = [];
   previous: Summary[] = [];
   customers: Customer[] = [];
+  templates: DocTemplate[] = [];
+  get lineTemplates() { return this.templates.filter(t => t.active && t.docType === (this.form.value.docType || 'QUOTATION') && t.businessLine === (this.form.value.businessLine || 'SOLAR')); }
   products: Product[] = [];
   masterParts: Part[] = [];
   get lineParts() { const l = this.form.value.businessLine || 'SOLAR'; return this.masterParts.filter(p => p.active && (p.businessLine === 'BOTH' || p.businessLine === l)); }
@@ -227,6 +241,11 @@ export class QuoteFormComponent implements OnInit {
 
   form = this.fb.nonNullable.group({
     businessLine: 'SOLAR',
+    docType: 'QUOTATION',
+    templateId: null as number | null,
+    pdfTitle: '',
+    showCover: true,
+    showLetter: true,
     enquiryId: null as number | null,
     customerId: null as number | null,
     refNo: '',
@@ -257,8 +276,8 @@ export class QuoteFormComponent implements OnInit {
       this.api.list().subscribe(l => (this.previous = l));
       const enq = Number(this.route.snapshot.queryParamMap.get('enquiry'));
       if (enq) { this.fromEnquiry(enq); return; }
-      // a new statement starts with the company's standard sections of the chosen line
-      this.api.template(this.form.value.businessLine!).subscribe(t => this.setSections(t));
+      // a new statement starts from the default template of its type and line
+      this.loadTemplates();
       return;
     }
     this.id = +p;
@@ -361,6 +380,28 @@ export class QuoteFormComponent implements OnInit {
     if (e.imageKey) this.loadPreview(e.imageKey);
   }
 
+  private loadTemplates() {
+    this.api.templates().subscribe({
+      next: t => { this.templates = t; this.useTemplate(this.defaultTemplate()); },
+      error: () => this.api.template(this.form.value.businessLine!).subscribe(s => this.setSections(s)),
+    });
+  }
+  private defaultTemplate() { return this.lineTemplates.find(t => t.isDefault) ?? this.lineTemplates[0] ?? null; }
+
+  /** Applies a template: its PDF options and a fresh copy of its sections. */
+  private useTemplate(t: DocTemplate | null) {
+    if (!t) { this.api.template(this.form.value.businessLine!).subscribe(s => this.setSections(s)); return; }
+    this.form.patchValue({ templateId: t.id!, pdfTitle: t.pdfTitle ?? '', showCover: t.showCover, showLetter: t.showLetter, showItemPrices: t.showPrices });
+    this.api.template(t.businessLine, t.docType, t.id).subscribe(s => this.setSections(s));
+  }
+
+  pickTemplate(id: number) {
+    const t = this.templates.find(x => x.id === id);
+    if (!t) return;
+    if (this.sections.dirty && !confirm('Switch the template? The PDF sections are replaced with the sections of that template.')) return;
+    this.useTemplate(t);
+  }
+
   /** New statement for an enquiry: its line, customer details and capacity, and the link back to it. */
   private fromEnquiry(id: number) {
     this.api.enquiry(id).subscribe({
@@ -372,9 +413,9 @@ export class QuoteFormComponent implements OnInit {
           clientName: c?.name ?? '', clientAddress: c?.address ?? '', contactPerson: c?.contactPerson ?? '',
           phone: (c?.phone ?? '').replace(/\D/g, '').slice(0, 10), projectLocation: c?.city ?? '',
         });
-        this.api.template(l.key).subscribe(t => this.setSections(t));
+        this.loadTemplates();
       },
-      error: () => this.api.template(this.form.value.businessLine!).subscribe(t => this.setSections(t)),
+      error: () => this.loadTemplates(),
     });
   }
 
@@ -385,7 +426,7 @@ export class QuoteFormComponent implements OnInit {
     if (touched && !confirm('Switch the business line? The PDF sections are replaced with the standard text of that line. Items and client details stay.')) return;
     const l = lineOf(key);
     this.form.patchValue({ businessLine: l.key, gstPercent: l.gst, capacityKw: l.capacity });
-    this.api.template(l.key).subscribe(t => this.setSections(t));
+    this.useTemplate(this.defaultTemplate());
   }
 
   private history: CatalogEntry[] = [];

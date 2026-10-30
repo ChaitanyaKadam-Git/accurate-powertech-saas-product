@@ -84,15 +84,14 @@ public class PdfService {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document d = new Document(PageSize.A4, 40, 40, 95, 55);
         PdfWriter w = PdfWriter.getInstance(d, out);
-        w.setPageEvent(new PageDecor(u.getCompanyName(), loadLogo(u)));
+        w.setPageEvent(new PageDecor(u.getCompanyName(), loadLogo(u), q.isShowCover()));
         d.open();
 
-        cover(d, q, u);
-        d.newPage();
+        // the template decides whether the cover page and the cover letter are part of this document
+        if (q.isShowCover()) { cover(d, q, u); d.newPage(); }
         toc(d, secs, known);
         d.newPage();
-        letter(d, q, u);
-        d.newPage();
+        if (q.isShowLetter()) { letter(d, q, u); d.newPage(); }
 
         for (int i = 0; i < secs.size(); i++) {
             QuoteSection s = secs.get(i);
@@ -119,7 +118,11 @@ public class PdfService {
 
     // ---------- pages ----------
     private void cover(Document d, Quotation q, AppUser u) throws Exception {
-        if (genset(q)) {
+        if (!blank(q.getPdfTitle())) {
+            d.add(centered(q.getPdfTitle().toUpperCase(), TITLE, 12));
+            d.add(centered("FOR", B, 12));
+            d.add(centered(kw(q) + (genset(q) ? " KVA " : " KWp ") + s(q.getProjectLocation()).toUpperCase(), RED_B, 14));
+        } else if (genset(q)) {
             d.add(centered("TECHNO-COMMERCIAL OFFER", TITLE, 12));
             d.add(centered("FOR", B, 12));
             d.add(centered("SUPPLY, INSTALLATION & COMMISSIONING OF " + kw(q) + " KVA DIESEL GENERATOR SET, " + s(q.getProjectLocation()).toUpperCase(), RED_B, 14));
@@ -388,13 +391,14 @@ public class PdfService {
     private static class PageDecor extends PdfPageEventHelper {
         private final String company;
         private final Image logo;
-        PageDecor(String company, Image logo) { this.company = company; this.logo = logo; }
+        private final boolean plainFirstPage;   // the cover page has no header
+        PageDecor(String company, Image logo, boolean plainFirstPage) { this.company = company; this.logo = logo; this.plainFirstPage = plainFirstPage; }
 
         @Override
         public void onEndPage(PdfWriter w, Document d) {
             PdfContentByte cb = w.getDirectContent();
             float top = PageSize.A4.getHeight();
-            if (w.getPageNumber() > 1) {
+            if (w.getPageNumber() > 1 || !plainFirstPage) {
                 ColumnText.showTextAligned(cb, Element.ALIGN_LEFT, new Phrase(company, HEAD), d.left(), top - 52, 0);
                 if (logo != null) {
                     try {
