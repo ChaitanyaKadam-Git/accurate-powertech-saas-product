@@ -252,7 +252,8 @@ details summary { cursor:pointer; font-weight:600; }
   table.items td > input:not(.s):not(.m), table.items td > textarea { min-width:0; }
   .scroll:has(> table.cards) { overflow:visible; }
   /* rights grid stays a grid: module names stick to the left while the rights scroll */
-  .matrix th:first-child, .matrix td:first-child { position:sticky; left:0; background:var(--surface); z-index:1; min-width:150px; }
+  .matrix th.sr, .matrix td.sr { position:sticky; left:0; background:var(--surface); z-index:1; }
+  .matrix th:nth-child(2), .matrix td:nth-child(2) { position:sticky; left:44px; background:var(--surface); z-index:1; min-width:150px; }
 }
 
 /* ---------- administration ---------- */
@@ -377,3 +378,6 @@ main > p:first-child { margin:0 0 8px; }
   .page-h h1 { font-size:18px; }
   .page-h p, .page-h p.muted { white-space:normal; }
 }
+
+.matrix th.sr, .matrix td.sr { width:44px; text-align:center !important; color:var(--muted); font-weight:600; }
+.matrix th:nth-child(2), .matrix td:nth-child(2) { text-align:left; }

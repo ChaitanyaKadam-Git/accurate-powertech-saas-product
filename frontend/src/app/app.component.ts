@@ -41,14 +41,12 @@ function labelTables() {
               <div class="group">Workspace</div>
             }
             <a routerLink="/" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }"><app-icon name="dashboard" /><span>Dashboard</span></a>
-            @if (auth.can('CUSTOMERS', 'VIEW')) { <a routerLink="/enquiries" routerLinkActive="on"><app-icon name="funnel" /><span>Enquiries</span></a> }
+            @if (auth.can('ENQUIRIES', 'VIEW')) { <a routerLink="/enquiries" routerLinkActive="on"><app-icon name="funnel" /><span>Enquiries</span></a> }
             @if (auth.can('QUOTATIONS', 'VIEW')) { <a routerLink="/statements" routerLinkActive="on"><app-icon name="file" /><span>Statements</span></a> }
             @if (auth.can('QUOTATIONS', 'CREATE')) { <a routerLink="/quote/new" routerLinkActive="on"><app-icon name="plus" /><span>New statement</span></a> }
-            @if (auth.can('CUSTOMERS', 'VIEW') || auth.can('PRODUCTS', 'VIEW')) { <div class="group">Masters</div> }
-            @if (auth.can('PRODUCTS', 'VIEW')) {
-              <a routerLink="/products" routerLinkActive="on"><app-icon name="box" /><span>Products</span></a>
-              <a routerLink="/parts" routerLinkActive="on"><app-icon name="cog" /><span>Parts</span></a>
-            }
+            @if (auth.can('CUSTOMERS', 'VIEW') || auth.can('PRODUCTS', 'VIEW') || auth.can('PARTS', 'VIEW')) { <div class="group">Masters</div> }
+            @if (auth.can('PRODUCTS', 'VIEW')) { <a routerLink="/products" routerLinkActive="on"><app-icon name="box" /><span>Products</span></a> }
+            @if (auth.can('PARTS', 'VIEW')) { <a routerLink="/parts" routerLinkActive="on"><app-icon name="cog" /><span>Parts</span></a> }
             @if (auth.can('CUSTOMERS', 'VIEW')) { <a routerLink="/customers" routerLinkActive="on"><app-icon name="contact" /><span>Customers</span></a> }
             <a routerLink="/settings" routerLinkActive="on"><app-icon name="settings" /><span>Settings</span></a>
           </nav>

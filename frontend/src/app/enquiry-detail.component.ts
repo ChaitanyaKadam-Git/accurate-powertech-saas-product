@@ -109,7 +109,7 @@ const KIND: Record<string, string> = { CREATED: 'Created', STAGE: 'Stage', CALL:
         </ul>
       </div>
       @if (error) { <p class="error">{{ error }}</p> }
-      @if (auth.can('CUSTOMERS', 'DELETE')) { <button class="link danger" (click)="remove()">Delete enquiry</button> }
+      @if (auth.can('ENQUIRIES', 'DELETE')) { <button class="link danger" (click)="remove()">Delete enquiry</button> }
     }
 
     @if (mv) {
@@ -176,7 +176,7 @@ export class EnquiryDetailComponent implements OnInit {
   f: Enquiry | null = null;
   error = ''; formError = ''; busy = false;
 
-  get canEdit() { return this.auth.can('CUSTOMERS', 'EDIT'); }
+  get canEdit() { return this.auth.can('ENQUIRIES', 'EDIT'); }
   get pos() { return this.d ? (this.d.enquiry.stage === 'LOST' ? -1 : this.flow.findIndex(s => s.key === this.d!.enquiry.stage)) : 0; }
   get next() { const p = this.pos; return p >= 0 && p < this.flow.length - 1 ? this.flow[p + 1] : null; }
   get won() { return !!this.d && this.d.enquiry.stage !== 'LOST' && this.pos >= 4; }

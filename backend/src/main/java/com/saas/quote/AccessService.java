@@ -58,7 +58,7 @@ public class AccessService {
             Role r = new Role();
             r.setTenantId(tenantId); r.setName("Sales Executive"); r.setDescription("Creates quotations and sees only their own");
             r.setQuotationScope("OWN");
-            for (String k : List.of("CUSTOMERS:VIEW", "CUSTOMERS:CREATE", "CUSTOMERS:EDIT", "PRODUCTS:VIEW", "TEMPLATES:VIEW", "TEMPLATE_DATA:VIEW",
+            for (String k : List.of("ENQUIRIES:VIEW", "ENQUIRIES:CREATE", "ENQUIRIES:EDIT", "CUSTOMERS:VIEW", "CUSTOMERS:CREATE", "CUSTOMERS:EDIT", "PRODUCTS:VIEW", "PARTS:VIEW", "TEMPLATES:VIEW", "TEMPLATE_DATA:VIEW",
                     "QUOTATIONS:VIEW", "QUOTATIONS:CREATE", "QUOTATIONS:EDIT", "PDF:VIEW", "PDF:DOWNLOAD", "REVISIONS:VIEW",
                     "EMAIL:VIEW", "EMAIL:SEND", "WHATSAPP:VIEW", "WHATSAPP:SEND")) r.getRights().add(k);
             roles.save(r);

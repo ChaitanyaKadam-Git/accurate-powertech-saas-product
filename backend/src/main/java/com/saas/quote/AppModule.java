@@ -2,27 +2,38 @@ package com.saas.quote;
 
 import java.util.List;
 
-/** The 12 permissioned modules. adminOnly modules can never be granted to non-admin roles. */
+/**
+ * The permissioned modules, named and grouped exactly like the sidebar menus (the order here is the order in the rights
+ * grid). adminOnly modules can never be granted to non-admin roles. ready=false: listed so rights can be prepared, but the
+ * screen does not exist yet.
+ */
 public enum AppModule {
-    USERS("User Management & Multiple User Creation", "Users & Access", true, Right.VIEW, Right.CREATE, Right.EDIT),
-    ROLES("Role & Rights Management", "Users & Access", true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
-    ACTIVITY("User Activity Log", "Users & Access", true, Right.VIEW, Right.DOWNLOAD),
-    CUSTOMERS("Customer Management", "Masters", false, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
-    PRODUCTS("Product & Category Management", "Masters", false, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
-    TEMPLATES("Quotation Template", "Templates", false, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
-    TEMPLATE_DATA("Template Data", "Templates", false, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
-    QUOTATIONS("Quotation Builder", "Quotations", false, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
-    PDF("PDF Preview & Download", "Quotations", false, Right.VIEW, Right.DOWNLOAD),
-    REVISIONS("Revision History", "Quotations", false, Right.VIEW, Right.DOWNLOAD),
-    EMAIL("Email Integration", "Communication", false, Right.VIEW, Right.SEND),
-    WHATSAPP("WhatsApp Integration", "Communication", false, Right.VIEW, Right.SEND);
+    // Administration
+    USERS("Users & Grant access", "Administration", true, true, Right.VIEW, Right.CREATE, Right.EDIT),
+    ROLES("Roles & rights", "Administration", true, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    ACTIVITY("Activity log", "Administration", true, true, Right.VIEW, Right.DOWNLOAD),
+    // Workspace
+    ENQUIRIES("Enquiries", "Workspace", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    QUOTATIONS("Statements", "Workspace", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    PDF("Statement PDF", "Workspace", false, true, Right.VIEW, Right.DOWNLOAD),
+    REVISIONS("Revision history", "Workspace", false, false, Right.VIEW, Right.DOWNLOAD),
+    // Masters
+    PRODUCTS("Products", "Masters", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    PARTS("Parts", "Masters", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    CUSTOMERS("Customers", "Masters", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    // Settings
+    TEMPLATES("Company details", "Settings", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    TEMPLATE_DATA("Standard text", "Settings", false, true, Right.VIEW, Right.CREATE, Right.EDIT, Right.DELETE),
+    // Communication
+    EMAIL("Email", "Communication", false, false, Right.VIEW, Right.SEND),
+    WHATSAPP("WhatsApp", "Communication", false, false, Right.VIEW, Right.SEND);
 
     public final String label, group;
-    public final boolean adminOnly;
+    public final boolean adminOnly, ready;
     public final List<Right> rights;
 
-    AppModule(String label, String group, boolean adminOnly, Right... rights) {
-        this.label = label; this.group = group; this.adminOnly = adminOnly; this.rights = List.of(rights);
+    AppModule(String label, String group, boolean adminOnly, boolean ready, Right... rights) {
+        this.label = label; this.group = group; this.adminOnly = adminOnly; this.ready = ready; this.rights = List.of(rights);
     }
 
     public static String key(AppModule m, Right r) { return m.name() + ":" + r.name(); }

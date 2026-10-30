@@ -93,7 +93,7 @@ export interface DashStats {
 }
 
 // ---------- administration ----------
-export interface ModuleInfo { key: string; label: string; group: string; adminOnly: boolean; rights: string[]; }
+export interface ModuleInfo { key: string; label: string; group: string; adminOnly: boolean; ready: boolean; rights: string[]; }
 export interface RoleDto { id: number; name: string; description: string; systemRole: boolean; adminRole: boolean; quotationScope: string; rights: string[]; userCount: number; }
 export interface UserDto {
   id: number; name: string; email: string; mobile: string; designation: string; department: string;

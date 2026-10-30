@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Customer flow: enquiries from first contact to commissioning. Uses the CUSTOMERS rights. People whose role sees only
+ * Customer flow: enquiries from first contact to commissioning. Uses the ENQUIRIES rights. People whose role sees only
  * their own quotations also see only the enquiries they own or created.
  */
 @RestController @RequestMapping("/api/enquiries") @RequiredArgsConstructor @Transactional
@@ -40,7 +40,7 @@ public class EnquiryController {
     record Stats(Map<String, Long> byStage, BigDecimal openValue, BigDecimal wonValueThisYear, long wonThisYear, long lostThisYear, List<Row> followUps) {}
 
     // ------------------------------------------------------------------ read
-    @GetMapping @Requires(module = AppModule.CUSTOMERS, right = Right.VIEW)
+    @GetMapping @Requires(module = AppModule.ENQUIRIES, right = Right.VIEW)
     public List<Row> list(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) String stage,
                           @RequestParam(required = false) String line, @RequestParam(required = false) Long ownerId,
                           @RequestParam(required = false) Long customerId) {
@@ -51,7 +51,7 @@ public class EnquiryController {
                 .filter(e -> customerId == null || customerId.equals(e.getCustomerId())).toList());
     }
 
-    @GetMapping("/stats") @Requires(module = AppModule.CUSTOMERS, right = Right.VIEW)
+    @GetMapping("/stats") @Requires(module = AppModule.ENQUIRIES, right = Right.VIEW)
     public Stats stats(@AuthenticationPrincipal AuthUser me) {
         List<Enquiry> all = visible(me);
         Map<String, Long> by = new LinkedHashMap<>();
@@ -71,14 +71,14 @@ public class EnquiryController {
     record Person(Long id, String name) {}
 
     /** People an enquiry can be assigned to (active users of the company). Others only ever assign to themselves. */
-    @GetMapping("/owners") @Requires(module = AppModule.CUSTOMERS, right = Right.VIEW)
+    @GetMapping("/owners") @Requires(module = AppModule.ENQUIRIES, right = Right.VIEW)
     public List<Person> owners(@AuthenticationPrincipal AuthUser me) {
         return users.findByTenantIdOrderByIdDesc(me.tenantId()).stream().filter(AppUser::enabled)
                 .filter(u -> me.seesAllQuotations() || u.getId().equals(me.userId()))
                 .map(u -> new Person(u.getId(), u.displayName())).sorted(Comparator.comparing(Person::name)).toList();
     }
 
-    @GetMapping("/{id}") @Requires(module = AppModule.CUSTOMERS, right = Right.VIEW)
+    @GetMapping("/{id}") @Requires(module = AppModule.ENQUIRIES, right = Right.VIEW)
     public Detail get(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
         Enquiry e = find(id, me);
         Customer c = customers.findByIdAndTenantId(e.getCustomerId(), me.tenantId()).orElse(null);
@@ -88,7 +88,7 @@ public class EnquiryController {
     }
 
     // ------------------------------------------------------------------ write
-    @PostMapping @Requires(module = AppModule.CUSTOMERS, right = Right.CREATE)
+    @PostMapping @Requires(module = AppModule.ENQUIRIES, right = Right.CREATE)
     public Detail create(@AuthenticationPrincipal AuthUser me, @RequestBody Save in) {
         Enquiry e = new Enquiry();
         e.setTenantId(me.tenantId());
@@ -100,20 +100,20 @@ public class EnquiryController {
         apply(e, in, me);
         repo.save(e);
         event(e, me, "CREATED", EnquiryStage.NEW.name(), LocalDate.now(), "Enquiry created for " + customers.findById(e.getCustomerId()).map(Customer::getCode).orElse("") + ": " + e.getTitle() + (e.getSource() == null ? "" : " (source: " + e.getSource() + ")"));
-        audit.log(me, AppModule.CUSTOMERS, "CREATE", "Enquiry", e.getId(), e.getRefNo() + " " + e.getTitle());
+        audit.log(me, AppModule.ENQUIRIES, "CREATE", "Enquiry", e.getId(), e.getRefNo() + " " + e.getTitle());
         return get(me, e.getId());
     }
 
-    @PutMapping("/{id}") @Requires(module = AppModule.CUSTOMERS, right = Right.EDIT)
+    @PutMapping("/{id}") @Requires(module = AppModule.ENQUIRIES, right = Right.EDIT)
     public Detail update(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @RequestBody Save in) {
         Enquiry e = find(id, me);
         apply(e, in, me);
-        audit.log(me, AppModule.CUSTOMERS, "EDIT", "Enquiry", e.getId(), e.getRefNo() + " " + e.getTitle());
+        audit.log(me, AppModule.ENQUIRIES, "EDIT", "Enquiry", e.getId(), e.getRefNo() + " " + e.getTitle());
         return get(me, e.getId());
     }
 
     /** Moves the enquiry to a stage (forward, back or to LOST) and records it on the timeline with its date and note. */
-    @PostMapping("/{id}/stage") @Requires(module = AppModule.CUSTOMERS, right = Right.EDIT)
+    @PostMapping("/{id}/stage") @Requires(module = AppModule.ENQUIRIES, right = Right.EDIT)
     public Detail moveStage(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @RequestBody StageChange in) {
         Enquiry e = find(id, me);
         EnquiryStage to = EnquiryStage.of(in.stage());
@@ -152,12 +152,12 @@ public class EnquiryController {
         e.setUpdatedAt(Instant.now());
         if (trim(in.note()) != null) text.append(". ").append(trim(in.note()));
         event(e, me, "STAGE", to.name(), date, text.toString());
-        audit.log(me, AppModule.CUSTOMERS, "EDIT", "Enquiry", e.getId(), e.getRefNo() + ": " + text);
+        audit.log(me, AppModule.ENQUIRIES, "EDIT", "Enquiry", e.getId(), e.getRefNo() + ": " + text);
         return get(me, e.getId());
     }
 
     /** A call, visit or note on the timeline; can also set the next follow-up date. */
-    @PostMapping("/{id}/events") @Requires(module = AppModule.CUSTOMERS, right = Right.EDIT)
+    @PostMapping("/{id}/events") @Requires(module = AppModule.ENQUIRIES, right = Right.EDIT)
     public Detail addNote(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @RequestBody Note in) {
         Enquiry e = find(id, me);
         String kind = in.kind() == null ? "NOTE" : in.kind().toUpperCase();
@@ -171,12 +171,12 @@ public class EnquiryController {
     }
 
     /** Statements made for it stay; they are only unlinked. */
-    @DeleteMapping("/{id}") @Requires(module = AppModule.CUSTOMERS, right = Right.DELETE)
+    @DeleteMapping("/{id}") @Requires(module = AppModule.ENQUIRIES, right = Right.DELETE)
     public void delete(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
         Enquiry e = find(id, me);
         for (Quotation q : quotations.findByOwnerIdAndEnquiryIdOrderByIdDesc(me.tenantId(), e.getId())) q.setEnquiryId(null);
         events.deleteByEnquiryId(e.getId());
-        audit.log(me, AppModule.CUSTOMERS, "DELETE", "Enquiry", e.getId(), e.getRefNo() + " " + e.getTitle());
+        audit.log(me, AppModule.ENQUIRIES, "DELETE", "Enquiry", e.getId(), e.getRefNo() + " " + e.getTitle());
         repo.delete(e);
     }
 
