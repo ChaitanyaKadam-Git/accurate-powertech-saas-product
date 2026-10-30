@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
 export interface Item {
-  equipment: string; specification: string; make: string; uom: string;
+  equipment: string; specification: string; make: string; uom: string; hsn?: string | null;
   qty: number; unitPrice: number; imageKey: string | null;
 }
 /** Business lines: each has its own standard text, capacity unit, default GST and PDF wording (server: BusinessLine). */
@@ -12,6 +12,23 @@ export const LINES = [
 ] as const;
 export type LineKey = typeof LINES[number]['key'];
 export const lineOf = (k?: string | null) => LINES.find(l => l.key === k) ?? LINES[0];
+
+/** Document types (server: DocType). */
+export const DOC_TYPES = [
+  { key: 'QUOTATION', label: 'Quotation', prefix: 'QTN' },
+  { key: 'PROFORMA', label: 'Proforma invoice', prefix: 'PI' },
+  { key: 'INVOICE', label: 'Tax invoice', prefix: 'INV' },
+] as const;
+export const docTypeOf = (k?: string | null) => DOC_TYPES.find(t => t.key === k) ?? DOC_TYPES[0];
+/** Proforma and tax invoices are built but switched off for now: only quotations show in the app. */
+export const INVOICES_ENABLED = false;
+export const VISIBLE_DOC_TYPES = INVOICES_ENABLED ? DOC_TYPES : DOC_TYPES.filter(t => t.key === 'QUOTATION');
+
+export interface TemplateSection { id?: number; position?: number; kind: string; title: string; content: string; style: string; visible: boolean; }
+export interface DocTemplate {
+  id?: number; docType: string; businessLine: string; name: string; isDefault: boolean; active: boolean; pdfTitle: string;
+  showCover: boolean; showLetter: boolean; showPrices: boolean; description: string; sections: TemplateSection[]; updatedAt?: string;
+}
 
 /** Customer flow stages, in order (server: EnquiryStage). */
 export const STAGES = [
@@ -42,7 +59,7 @@ export interface EnquiryRow {
 export interface EnquiryEvent { id: number; kind: string; stage: string | null; eventDate: string; text: string; userName: string; at: string; }
 export interface EnquiryDetail {
   enquiry: Enquiry; customer: Customer | null; ownerName: string | null; stageLabel: string; events: EnquiryEvent[];
-  quotations: { id: number; refNo: string; quoteDate: string; total: number }[];
+  quotations: { id: number; docType: string; refNo: string; quoteDate: string; total: number }[];
 }
 export interface EnquiryStats { byStage: Record<string, number>; openValue: number; wonValueThisYear: number; wonThisYear: number; lostThisYear: number; followUps: EnquiryRow[]; }
 export interface CustomerHistory { customer: Customer; enquiryIds: number[]; statements: { id: number; refNo: string; businessLine: string; quoteDate: string; total: number; enquiryId: number | null }[]; }
@@ -52,17 +69,18 @@ export interface QSection {
   visible: boolean; imageColumns: number; imageKeys: string[];
 }
 export interface Quote {
-  id?: number; businessLine: string; enquiryId?: number | null; customerId?: number | null; refNo: string; quoteDate: string; clientName: string; clientAddress: string;
+  id?: number; docType?: string; sourceId?: number | null; poNo?: string; dueDate?: string | null; templateId?: number | null; pdfTitle?: string; showCover?: boolean; showLetter?: boolean;
+  businessLine: string; enquiryId?: number | null; customerId?: number | null; refNo: string; quoteDate: string; clientName: string; clientAddress: string;
   contactPerson: string; phone: string; projectLocation: string; capacityKw: number; gstPercent: number;
   showItemPrices: boolean; sections: QSection[];
   coverImageKey: string; signatoryName: string; signatoryTitle: string; signatoryPhone: string; signatoryEmail: string;
   items: Item[];
 }
-export interface Summary { id: number; businessLine: string; enquiryId?: number | null; customerId?: number | null; customerCode?: string | null; refNo: string; clientName: string; projectLocation: string; quoteDate: string; total: number; createdBy: string; }
+export interface Summary { id: number; docType: string; sourceId?: number | null; businessLine: string; enquiryId?: number | null; customerId?: number | null; customerCode?: string | null; refNo: string; clientName: string; projectLocation: string; quoteDate: string; total: number; createdBy: string; }
 export interface Section { id: number; sectionKey: string; businessLine?: string; title: string; content: string; }
 export interface Company {
   companyName: string; address: string; logoKey: string | null; coverImageKey: string | null; diagramImageKey: string | null;
-  signatoryName: string; signatoryTitle: string; signatoryPhone: string; signatoryEmail: string;
+  signatoryName: string; signatoryTitle: string; signatoryPhone: string; signatoryEmail: string; gstin?: string;
 }
 export interface Customer {
   id?: number; code?: string; name: string; contactPerson: string; phone: string; email: string; gstin: string;
@@ -78,7 +96,7 @@ export interface PartImportReport { committed: boolean; update: boolean; total: 
 /** A product's part: the master part (read-only values) and the quantity. */
 export interface ProductPart {
   id?: number; partId: number | null; qty: number;
-  name?: string; category?: string; specification?: string; make?: string; uom?: string; unitPrice?: number; imageKey?: string | null; amount?: number; partActive?: boolean;
+  name?: string; category?: string; specification?: string; make?: string; uom?: string; hsn?: string | null; unitPrice?: number; imageKey?: string | null; amount?: number; partActive?: boolean;
 }
 export interface Product {
   id?: number; businessLine: string; name: string; code: string; capacity: number | null; description: string; active: boolean;
@@ -119,6 +137,7 @@ export class Api {
   get(id: number) { return this.http.get<Quote>(`/api/quotations/${id}`); }
   save(q: Quote) { return q.id ? this.http.put<Quote>(`/api/quotations/${q.id}`, q) : this.http.post<Quote>('/api/quotations', q); }
   remove(id: number) { return this.http.delete(`/api/quotations/${id}`); }
+  convert(id: number, type: string) { return this.http.post<Quote>(`/api/quotations/${id}/convert`, {}, { params: { type } }); }
   clone(id: number) { return this.http.post<Quote>(`/api/quotations/${id}/clone`, {}); }
 
   upload(file: File) {
@@ -132,7 +151,20 @@ export class Api {
   saveSections(line: string, s: Section[]) { return this.http.put<Section[]>('/api/sections', s, { params: { line } }); }
   resetSections(line: string) { return this.http.post<Section[]>('/api/sections/reset', {}, { params: { line } }); }
 
-  template(line: string) { return this.http.get<QSection[]>('/api/quotations/template', { params: { line } }); }
+  template(line: string, type = 'QUOTATION', templateId?: number | null) {
+    const params: Record<string, string> = { line, type };
+    if (templateId) params['templateId'] = String(templateId);
+    return this.http.get<QSection[]>('/api/quotations/template', { params });
+  }
+  templates(type?: string, line?: string) {
+    const params: Record<string, string> = {};
+    if (type) params['type'] = type;
+    if (line) params['line'] = line;
+    return this.http.get<DocTemplate[]>('/api/templates', { params });
+  }
+  saveTemplate(t: DocTemplate) { return t.id ? this.http.put<DocTemplate>(`/api/templates/${t.id}`, t) : this.http.post<DocTemplate>('/api/templates', t); }
+  cloneTemplate(id: number) { return this.http.post<DocTemplate>(`/api/templates/${id}/clone`, {}); }
+  deleteTemplate(id: number) { return this.http.delete(`/api/templates/${id}`); }
   addSection(line: string, title: string, content: string) { return this.http.post<Section>('/api/sections', { title, content }, { params: { line } }); }
   deleteSection(id: number) { return this.http.delete(`/api/sections/${id}`); }
 

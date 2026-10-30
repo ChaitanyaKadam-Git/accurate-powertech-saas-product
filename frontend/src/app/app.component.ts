@@ -44,10 +44,11 @@ function labelTables() {
             @if (auth.can('ENQUIRIES', 'VIEW')) { <a routerLink="/enquiries" routerLinkActive="on"><app-icon name="funnel" /><span>Enquiries</span></a> }
             @if (auth.can('QUOTATIONS', 'VIEW')) { <a routerLink="/statements" routerLinkActive="on"><app-icon name="file" /><span>Statements</span></a> }
             @if (auth.can('QUOTATIONS', 'CREATE')) { <a routerLink="/quote/new" routerLinkActive="on"><app-icon name="plus" /><span>New statement</span></a> }
-            @if (auth.can('CUSTOMERS', 'VIEW') || auth.can('PRODUCTS', 'VIEW') || auth.can('PARTS', 'VIEW')) { <div class="group">Masters</div> }
+            @if (auth.can('CUSTOMERS', 'VIEW') || auth.can('PRODUCTS', 'VIEW') || auth.can('PARTS', 'VIEW') || auth.can('TEMPLATE_DATA', 'VIEW')) { <div class="group">Masters</div> }
             @if (auth.can('PRODUCTS', 'VIEW')) { <a routerLink="/products" routerLinkActive="on"><app-icon name="box" /><span>Products</span></a> }
             @if (auth.can('PARTS', 'VIEW')) { <a routerLink="/parts" routerLinkActive="on"><app-icon name="cog" /><span>Parts</span></a> }
             @if (auth.can('CUSTOMERS', 'VIEW')) { <a routerLink="/customers" routerLinkActive="on"><app-icon name="contact" /><span>Customers</span></a> }
+            @if (auth.can('TEMPLATE_DATA', 'VIEW')) { <a routerLink="/templates" routerLinkActive="on"><app-icon name="layout" /><span>Templates</span></a> }
             <a routerLink="/settings" routerLinkActive="on"><app-icon name="settings" /><span>Settings</span></a>
           </nav>
         </aside>
@@ -126,6 +127,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (u.startsWith('/enquiries')) return 'Enquiries';
     if (u.startsWith('/products')) return 'Products';
     if (u.startsWith('/parts')) return 'Parts';
+    if (u.startsWith('/templates')) return 'Templates';
     if (u.startsWith('/settings')) return 'Settings';
     return '';
   }

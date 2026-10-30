@@ -104,6 +104,35 @@ s, tpl = call("GET", "/quotations/template", ADMIN)
 check("new statement template includes Warranty and BOM/OFFER", s == 200 and any(x["title"] == "Warranty" for x in tpl)
       and {"BOM", "OFFER"} <= {x["kind"] for x in tpl})
 
+# ---------------------------------------------------------------- 2b. templates
+print("\n== Templates")
+s, tl = call("GET", "/templates", ADMIN)
+check("starting templates: 3 types x 2 lines, one default each", s == 200 and len(tl) == 6 and all(t["isDefault"] for t in tl)
+      and {(t["docType"], t["businessLine"]) for t in tl} == {(a, b) for a in ("QUOTATION", "PROFORMA", "INVOICE") for b in ("SOLAR", "GENSET")}, len(tl) if s == 200 else s)
+qs = next(t for t in tl if t["docType"] == "QUOTATION" and t["businessLine"] == "SOLAR")
+check("default solar quotation built from the standard text (incl. Warranty)", any(x["title"] == "Warranty" for x in qs["sections"]) and qs["showCover"] and qs["showLetter"])
+pi = next(t for t in tl if t["docType"] == "PROFORMA" and t["businessLine"] == "GENSET")
+check("proforma template: no cover/letter, bank details and declaration", not pi["showCover"] and not pi["showLetter"] and {"Bank details", "Declaration"} <= {x["title"] for x in pi["sections"]})
+s, t2 = call("POST", "/templates", ADMIN, {"docType": "QUOTATION", "businessLine": "SOLAR", "name": "Solar - residential short", "pdfTitle": "Rooftop solar offer",
+              "showCover": False, "showLetter": True, "showPrices": False, "sections": [{"kind": "TEXT", "title": "Why solar", "content": "Lower bills", "style": "PARAGRAPH"},
+              {"kind": "BOM", "title": "Items"}, {"kind": "OFFER", "title": "Price"}]})
+check("second solar quotation template (not default)", s == 200 and not t2["isDefault"] and len(t2["sections"]) == 3, t2 if s != 200 else None)
+check("same name in same type+line refused", call("POST", "/templates", ADMIN, {"docType": "QUOTATION", "businessLine": "SOLAR", "name": "solar - residential SHORT"})[0] == 409)
+check("same name in another line allowed", call("POST", "/templates", ADMIN, {"docType": "QUOTATION", "businessLine": "GENSET", "name": "Solar - residential short"})[0] == 200)
+s, sec = call("GET", "/quotations/template", ADMIN, params={"line": "SOLAR", "type": "QUOTATION", "templateId": t2["id"]})
+check("statement sections from a chosen template", s == 200 and [x["title"] for x in sec] == ["Why solar", "Items", "Price"])
+s, up = call("PUT", f"/templates/{t2['id']}", ADMIN, {**t2, "isDefault": True})
+s, tl = call("GET", "/templates", ADMIN, params={"type": "QUOTATION", "line": "SOLAR"})
+check("making it default moves the default", [t["name"] for t in tl if t["isDefault"]] == ["Solar - residential short"])
+s, sec = call("GET", "/quotations/template", ADMIN, params={"line": "SOLAR"})
+check("new solar statement now starts from the new default", [x["title"] for x in sec] == ["Why solar", "Items", "Price"])
+call("PUT", f"/templates/{qs['id']}", ADMIN, {**qs, "isDefault": True})
+check("inactive default refused", call("PUT", f"/templates/{qs['id']}", ADMIN, {**qs, "isDefault": True, "active": False})[0] == 400)
+check("last template of a type+line cannot be deleted", call("DELETE", f"/templates/{pi['id']}", ADMIN)[0] == 400)
+s, cl = call("POST", f"/templates/{t2['id']}/clone", ADMIN)
+check("duplicate a template", s == 200 and cl["name"].endswith("(copy)") and len(cl["sections"]) == 3 and not cl["isDefault"])
+check("delete a non-default template", call("DELETE", f"/templates/{cl['id']}", ADMIN)[0] == 200)
+
 # ---------------------------------------------------------------- 3. roles
 print("\n== Roles")
 s, roles = call("GET", "/admin/roles", ADMIN)
@@ -127,7 +156,7 @@ s, spare = call("POST", "/admin/roles", ADMIN, {"name": "Spare", "quotationScope
 print("\n== Rights grid follows the menu")
 s, mods = call("GET", "/admin/modules", ADMIN)
 check("modules in menu order with menu names", s == 200 and [m["label"] for m in mods] == ["Users & Grant access", "Roles & rights", "Activity log", "Enquiries", "Statements",
-      "Statement PDF", "Revision history", "Products", "Parts", "Customers", "Company details", "Standard text", "Email", "WhatsApp"], [m["label"] for m in mods] if s == 200 else s)
+      "Statement PDF", "Revision history", "Products", "Parts", "Customers", "Templates", "Company details", "Email", "WhatsApp"], [m["label"] for m in mods] if s == 200 else s)
 check("menu groups", [m["group"] for m in mods][:4] == ["Administration"] * 3 + ["Workspace"] and {m["group"] for m in mods} == {"Administration", "Workspace", "Masters", "Settings", "Communication"})
 check("screens not built yet are marked", {m["key"] for m in mods if not m["ready"]} == {"REVISIONS", "EMAIL", "WHATSAPP"})
 mgr_rights = set(next(r for r in call("GET", "/admin/roles", ADMIN)[1] if r["name"] == "Manager")["rights"])
@@ -633,6 +662,40 @@ check("deleting an enquiry keeps its statement, unlinked", call("DELETE", f"/enq
 call("DELETE", f"/quotations/{q4['id']}", ADMIN)
 s, a = call("GET", "/admin/activity/audit", ADMIN, params={"q": "ENQ/", "size": 200})
 check("enquiry changes in the audit trail", s == 200 and a["total"] >= 8)
+
+# ---------------------------------------------------------------- 11e. Proforma and tax invoices
+print("\n== Proforma / tax invoice")
+import os as _os
+comp = call("GET", "/company", ADMIN)[1]
+check("bad company GSTIN refused", call("PUT", "/company", ADMIN, {**comp, "gstin": "123"})[0] == 400)
+s, comp2 = call("PUT", "/company", ADMIN, {**comp, "gstin": "27aabca1234b1z5"})
+check("company GSTIN saved (upper-cased)", s == 200 and comp2["gstin"] == "27AABCA1234B1Z5")
+call("PUT", f"/customers/{cmetro['id']}", PRIYA, {"code": cmetro["code"], "name": "Metro Hospital", "city": "Kothrud", "phone": "9822334455", "gstin": "29AAACM1234C1Z2", "address": "Karve Road, Kothrud, Pune"})
+s, q = call("GET", f"/quotations/{qe['id']}", PRIYA)
+q["items"][0]["hsn"] = "8502"
+s, q = call("PUT", f"/quotations/{qe['id']}", PRIYA, q)
+check("HSN stored on an item", s == 200 and q["items"][0]["hsn"] == "8502")
+s, pi = call("POST", f"/quotations/{qe['id']}/convert", PRIYA, params={"type": "PROFORMA"})
+check("proforma created from the quotation", s == 200 and pi["docType"] == "PROFORMA" and pi["refNo"] == f"PI/{td.year}/1" and pi["sourceId"] == qe["id"]
+      and pi["customerId"] == cmetro["id"] and pi["enquiryId"] == E1 and pi["items"][0]["hsn"] == "8502" and abs(pi["total"] - qe["total"]) < 0.01, (s, pi if s != 200 else pi["refNo"]))
+check("proforma uses the proforma template (no cover, bank details)", not pi["showCover"] and not pi["showLetter"] and any(x["title"] == "Bank details" for x in pi["sections"]))
+check("buyer's PO number taken from the enquiry order", pi["poNo"] == "PO-MH-778")
+s, inv = call("POST", f"/quotations/{pi['id']}/convert", PRIYA, params={"type": "INVOICE"})
+check("tax invoice created from the proforma", s == 200 and inv["docType"] == "INVOICE" and inv["refNo"] == f"INV/{td.year}/1" and inv["sourceId"] == pi["id"])
+check("a tax invoice cannot be converted again", call("POST", f"/quotations/{inv['id']}/convert", PRIYA, params={"type": "PROFORMA"})[0] == 400)
+check("convert to quotation refused", call("POST", f"/quotations/{qe['id']}/convert", PRIYA, params={"type": "QUOTATION"})[0] == 400)
+check("quotation numbering unaffected", call("POST", f"/quotations/{qe['id']}/clone", PRIYA)[1]["refNo"].startswith(f"QTN/{td.year}/"))
+s, lst = call("GET", "/quotations", PRIYA)
+types = {x["refNo"]: x["docType"] for x in lst}
+check("list carries the document type", types.get(pi["refNo"]) == "PROFORMA" and types.get(inv["refNo"]) == "INVOICE")
+s, d = call("GET", f"/enquiries/{E1}", PRIYA)
+check("enquiry shows its documents with types and timeline entries", {x["docType"] for x in d["quotations"]} >= {"QUOTATION", "PROFORMA", "INVOICE"}
+      and any("Tax invoice" in x["text"] for x in d["events"]))
+for doc, name in ((pi, "proforma"), (inv, "invoice")):
+    s, pdf = call("GET", f"/quotations/{doc['id']}/pdf", PRIYA, raw=True)
+    check(f"{name} PDF generated", s == 200 and pdf[:4] == b"%PDF")
+    out = _os.environ.get("E2E_PDF_DIR")
+    if out: open(f"{out}/{name}.pdf", "wb").write(pdf)
 
 # ---------------------------------------------------------------- 12. other company is isolated
 print("\n== Tenant isolation")

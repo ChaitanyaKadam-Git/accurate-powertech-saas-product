@@ -38,6 +38,7 @@ import java.util.Map;
 public class PdfService {
     private final StorageService storage;
     private final UserRepo users;
+    private final CustomerRepo customers;
 
     private static final Color NAVY = new Color(0x0B, 0x2A, 0x6B), BLUE = new Color(0x2F, 0x55, 0x97),
             BAR = new Color(0xC6, 0xD9, 0xF1), RED = new Color(0xB0, 0x10, 0x10), GREEN = new Color(0x4C, 0x8A, 0x10);
@@ -56,6 +57,7 @@ public class PdfService {
     public byte[] build(Quotation q, Long uid) {
         try {
             AppUser u = users.findById(uid).orElseThrow();
+            if (DocType.of(q.getDocType()) != DocType.QUOTATION) return invoice(q, u);
             List<QuoteSection> secs = active(q);
             Map<String, Integer> pages = new LinkedHashMap<>();
             render(q, u, secs, null, pages);                                   // pass 1: find the chapter pages
@@ -84,15 +86,14 @@ public class PdfService {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document d = new Document(PageSize.A4, 40, 40, 95, 55);
         PdfWriter w = PdfWriter.getInstance(d, out);
-        w.setPageEvent(new PageDecor(u.getCompanyName(), loadLogo(u)));
+        w.setPageEvent(new PageDecor(u.getCompanyName(), loadLogo(u), q.isShowCover()));
         d.open();
 
-        cover(d, q, u);
-        d.newPage();
+        // the template decides whether the cover page and the cover letter are part of this document
+        if (q.isShowCover()) { cover(d, q, u); d.newPage(); }
         toc(d, secs, known);
         d.newPage();
-        letter(d, q, u);
-        d.newPage();
+        if (q.isShowLetter()) { letter(d, q, u); d.newPage(); }
 
         for (int i = 0; i < secs.size(); i++) {
             QuoteSection s = secs.get(i);
@@ -117,9 +118,202 @@ public class PdfService {
         return out.toByteArray();
     }
 
+    // ---------- proforma invoice / tax invoice ----------
+    /**
+     * GST invoice layout: supplier and buyer with GSTINs, document details, items with HSN, taxable value, CGST + SGST
+     * (same state) or IGST (different states, from the first two digits of the GSTINs), amount in words, then the
+     * template's text sections (bank details, terms, declaration) and the signatory.
+     */
+    private byte[] invoice(Quotation q, AppUser u) throws Exception {
+        DocType type = DocType.of(q.getDocType());
+        Customer cust = q.getCustomerId() == null ? null : customers.findById(q.getCustomerId()).orElse(null);
+        String buyerGstin = cust == null ? null : cust.getGstin();
+        boolean inter = !blank(u.getGstin()) && !blank(buyerGstin) && !u.getGstin().substring(0, 2).equals(buyerGstin.substring(0, 2));
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Document d = new Document(PageSize.A4, 36, 36, 95, 50);
+        PdfWriter w = PdfWriter.getInstance(d, out);
+        w.setPageEvent(new PageDecor(u.getCompanyName(), loadLogo(u), false));
+        d.open();
+
+        d.add(centered(blank(q.getPdfTitle()) ? type.label.toUpperCase() : q.getPdfTitle().toUpperCase(), TITLE, 10));
+
+        // supplier / buyer | document details
+        PdfPTable top = new PdfPTable(2);
+        top.setWidthPercentage(100);
+        top.setWidths(new float[]{55, 45});
+        StringBuilder sup = new StringBuilder(s(u.getCompanyName()));
+        if (!blank(u.getAddress())) sup.append('\n').append(u.getAddress());
+        if (!blank(u.getGstin())) sup.append("\nGSTIN: ").append(u.getGstin()).append("  (State code ").append(u.getGstin(), 0, 2).append(')');
+        StringBuilder buy = new StringBuilder(s(q.getClientName()));
+        if (!blank(q.getClientAddress())) buy.append('\n').append(q.getClientAddress());
+        if (!blank(buyerGstin)) buy.append("\nGSTIN: ").append(buyerGstin).append("  (State code ").append(buyerGstin, 0, 2).append(')');
+        if (!blank(q.getContactPerson()) || !blank(q.getPhone())) buy.append("\nContact: ").append(s(q.getContactPerson())).append(blank(q.getPhone()) ? "" : "  " + q.getPhone());
+        top.addCell(box("Supplier", sup.toString()));
+        PdfPCell meta = box(type == DocType.INVOICE ? "Invoice details" : "Proforma details", null);
+        LocalDate date = q.getQuoteDate() == null ? LocalDate.now() : q.getQuoteDate();
+        meta.addElement(kv(type == DocType.INVOICE ? "Invoice no." : "Proforma no.", s(q.getRefNo())));
+        meta.addElement(kv("Date", date.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))));
+        if (q.getDueDate() != null) meta.addElement(kv("Due date", q.getDueDate().format(DateTimeFormatter.ofPattern("dd MMM yyyy"))));
+        if (!blank(q.getPoNo())) meta.addElement(kv("Buyer's order no.", q.getPoNo()));
+        if (cust != null) meta.addElement(kv("Customer code", s(cust.getCode())));
+        String pos = !blank(buyerGstin) ? state(buyerGstin) : !blank(u.getGstin()) ? state(u.getGstin()) : "";
+        meta.addElement(kv("Place of supply", blank(q.getProjectLocation()) ? pos : q.getProjectLocation() + (pos.isEmpty() ? "" : " (" + pos + ")")));
+        top.addCell(meta);
+        top.addCell(box("Bill to", buy.toString()));
+        top.addCell(box("Ship to / site", s(q.getClientName()) + (blank(q.getProjectLocation()) ? "" : "\n" + q.getProjectLocation())));
+        d.add(top);
+
+        // items
+        PdfPTable t = new PdfPTable(7);
+        t.setWidthPercentage(100);
+        t.setSpacingBefore(10);
+        t.setWidths(new float[]{5, 41, 10, 8, 8, 13, 15});
+        t.setHeaderRows(1);
+        for (String h : new String[]{"Sr", "Description of goods / services", "HSN/SAC", "Qty", "UOM", "Rate (Rs.)", "Amount (Rs.)"}) {
+            PdfPCell c = cell(h, TH, Element.ALIGN_CENTER); c.setBackgroundColor(BAR); t.addCell(c);
+        }
+        int n = 1;
+        for (QuoteItem i : q.getItems()) {
+            t.addCell(cell(String.valueOf(n++), SM, Element.ALIGN_CENTER));
+            PdfPCell desc = new PdfPCell();
+            desc.setPadding(4);
+            desc.addElement(new Phrase(s(i.getEquipment()), f(Font.BOLD, 8.5f, Color.BLACK)));
+            if (!blank(i.getSpecification())) desc.addElement(new Phrase(i.getSpecification() + (blank(i.getMake()) ? "" : "  Make: " + i.getMake()), SM));
+            else if (!blank(i.getMake())) desc.addElement(new Phrase("Make: " + i.getMake(), SM));
+            t.addCell(desc);
+            t.addCell(cell(i.getHsn(), SM, Element.ALIGN_CENTER));
+            t.addCell(cell(i.getQty() == null ? "" : i.getQty().stripTrailingZeros().toPlainString(), SM, Element.ALIGN_CENTER));
+            t.addCell(cell(i.getUom(), SM, Element.ALIGN_CENTER));
+            t.addCell(cell(INR.format(i.getUnitPrice() == null ? BigDecimal.ZERO : i.getUnitPrice()), SM, Element.ALIGN_RIGHT));
+            t.addCell(cell(INR.format(i.getAmount()), SM, Element.ALIGN_RIGHT));
+        }
+        d.add(t);
+
+        // tax summary
+        BigDecimal taxable = q.getSubtotal(), tax = q.getGstAmount(), total = q.getTotal();
+        BigDecimal rate = q.getGstPercent() == null ? BigDecimal.ZERO : q.getGstPercent();
+        PdfPTable sum = new PdfPTable(2);
+        sum.setWidthPercentage(48);
+        sum.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        sum.setSpacingBefore(6);
+        sum.setWidths(new float[]{60, 40});
+        sumRow(sum, "Taxable value", taxable, false);
+        if (inter) sumRow(sum, "IGST @ " + rate.stripTrailingZeros().toPlainString() + "%", tax, false);
+        else {
+            BigDecimal half = tax.divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP);
+            String hr = rate.divide(BigDecimal.valueOf(2), 3, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+            sumRow(sum, "CGST @ " + hr + "%", half, false);
+            sumRow(sum, "SGST @ " + hr + "%", tax.subtract(half), false);
+        }
+        sumRow(sum, "Total amount", total, true);
+        d.add(sum);
+        Paragraph words = new Paragraph("Amount in words: " + rupeesInWords(total), BB);
+        words.setSpacingBefore(6);
+        d.add(words);
+
+        // template text: bank details, terms, declaration ...
+        for (QuoteSection sec : active(q)) {
+            if (!"TEXT".equals(sec.getKind())) continue;
+            bar(d, title(sec));
+            String text = fill(sec.getContent(), q);
+            if ("PARAGRAPH".equals(sec.getStyle())) paragraphs(d, text);
+            else if ("TABLE".equals(sec.getStyle())) termsTable(d, text);
+            else bullets(d, text);
+        }
+
+        // signature block never splits across pages
+        PdfPTable sign = new PdfPTable(1);
+        sign.setWidthPercentage(100);
+        sign.setKeepTogether(true);
+        sign.setSpacingBefore(14);
+        PdfPCell sc = new PdfPCell(new Phrase("For " + s(u.getCompanyName()) + "\n\n\n\nAuthorised Signatory", BB));
+        sc.setBorder(0);
+        sc.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        sign.addCell(sc);
+        d.add(sign);
+        if (type == DocType.PROFORMA) {
+            Paragraph note = new Paragraph("This is a proforma invoice, not a tax invoice.", SM);
+            note.setAlignment(Element.ALIGN_CENTER);
+            note.setSpacingBefore(10);
+            d.add(note);
+        }
+        d.close();
+        return out.toByteArray();
+    }
+
+    private static final Map<String, String> STATES = Map.ofEntries(
+            Map.entry("01", "Jammu & Kashmir"), Map.entry("02", "Himachal Pradesh"), Map.entry("03", "Punjab"), Map.entry("04", "Chandigarh"),
+            Map.entry("05", "Uttarakhand"), Map.entry("06", "Haryana"), Map.entry("07", "Delhi"), Map.entry("08", "Rajasthan"),
+            Map.entry("09", "Uttar Pradesh"), Map.entry("10", "Bihar"), Map.entry("11", "Sikkim"), Map.entry("12", "Arunachal Pradesh"),
+            Map.entry("13", "Nagaland"), Map.entry("14", "Manipur"), Map.entry("15", "Mizoram"), Map.entry("16", "Tripura"),
+            Map.entry("17", "Meghalaya"), Map.entry("18", "Assam"), Map.entry("19", "West Bengal"), Map.entry("20", "Jharkhand"),
+            Map.entry("21", "Odisha"), Map.entry("22", "Chhattisgarh"), Map.entry("23", "Madhya Pradesh"), Map.entry("24", "Gujarat"),
+            Map.entry("26", "Dadra & Nagar Haveli and Daman & Diu"), Map.entry("27", "Maharashtra"), Map.entry("29", "Karnataka"),
+            Map.entry("30", "Goa"), Map.entry("31", "Lakshadweep"), Map.entry("32", "Kerala"), Map.entry("33", "Tamil Nadu"),
+            Map.entry("34", "Puducherry"), Map.entry("35", "Andaman & Nicobar Islands"), Map.entry("36", "Telangana"),
+            Map.entry("37", "Andhra Pradesh"), Map.entry("38", "Ladakh"));
+
+    /** "29 - Karnataka" from a GSTIN's state code. */
+    private static String state(String gstin) { String c = gstin.substring(0, 2); return c + " - " + STATES.getOrDefault(c, "State " + c); }
+
+    private PdfPCell box(String heading, String body) {
+        PdfPCell c = new PdfPCell();
+        c.setPadding(6);
+        c.addElement(new Phrase(heading, f(Font.BOLD, 8, BLUE)));
+        if (body != null) c.addElement(new Paragraph(body, SM));
+        return c;
+    }
+
+    private Paragraph kv(String k, String v) {
+        Paragraph p = new Paragraph();
+        p.add(new Phrase(k + ": ", f(Font.BOLD, 8.5f, Color.BLACK)));
+        p.add(new Phrase(v, SM));
+        return p;
+    }
+
+    private void sumRow(PdfPTable t, String label, BigDecimal v, boolean bold) {
+        PdfPCell a = cell(label, bold ? TH : SM, Element.ALIGN_LEFT), b = cell(rs(v), bold ? TH : SM, Element.ALIGN_RIGHT);
+        if (bold) { a.setBackgroundColor(BAR); b.setBackgroundColor(BAR); }
+        t.addCell(a); t.addCell(b);
+    }
+
+    private static final String[] ONES = {"", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve",
+            "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"};
+    private static final String[] TENS = {"", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"};
+
+    /** Indian numbering: "Rupees Seventeen Lakh Eleven Thousand Only", with paise when there are any. */
+    static String rupeesInWords(BigDecimal amount) {
+        BigDecimal a = amount.setScale(2, java.math.RoundingMode.HALF_UP);
+        long rupees = a.longValue();
+        int paise = a.remainder(BigDecimal.ONE).movePointRight(2).intValue();
+        String w = rupees == 0 ? "Zero" : indian(rupees);
+        return "Rupees " + w + (paise > 0 ? " and " + below100(paise) + " Paise" : "") + " Only";
+    }
+
+    private static String indian(long n) {
+        StringBuilder sb = new StringBuilder();
+        long crore = n / 10_000_000; n %= 10_000_000;
+        long lakh = n / 100_000; n %= 100_000;
+        long thousand = n / 1000; n %= 1000;
+        long hundred = n / 100; n %= 100;
+        if (crore > 0) sb.append(indian(crore)).append(" Crore ");
+        if (lakh > 0) sb.append(below100((int) lakh)).append(" Lakh ");
+        if (thousand > 0) sb.append(below100((int) thousand)).append(" Thousand ");
+        if (hundred > 0) sb.append(ONES[(int) hundred]).append(" Hundred ");
+        if (n > 0) sb.append(below100((int) n));
+        return sb.toString().trim();
+    }
+
+    private static String below100(int n) { return n < 20 ? ONES[n] : (TENS[n / 10] + (n % 10 == 0 ? "" : " " + ONES[n % 10])); }
+
     // ---------- pages ----------
     private void cover(Document d, Quotation q, AppUser u) throws Exception {
-        if (genset(q)) {
+        if (!blank(q.getPdfTitle())) {
+            d.add(centered(q.getPdfTitle().toUpperCase(), TITLE, 12));
+            d.add(centered("FOR", B, 12));
+            d.add(centered(kw(q) + (genset(q) ? " KVA " : " KWp ") + s(q.getProjectLocation()).toUpperCase(), RED_B, 14));
+        } else if (genset(q)) {
             d.add(centered("TECHNO-COMMERCIAL OFFER", TITLE, 12));
             d.add(centered("FOR", B, 12));
             d.add(centered("SUPPLY, INSTALLATION & COMMISSIONING OF " + kw(q) + " KVA DIESEL GENERATOR SET, " + s(q.getProjectLocation()).toUpperCase(), RED_B, 14));
@@ -388,13 +582,14 @@ public class PdfService {
     private static class PageDecor extends PdfPageEventHelper {
         private final String company;
         private final Image logo;
-        PageDecor(String company, Image logo) { this.company = company; this.logo = logo; }
+        private final boolean plainFirstPage;   // the cover page has no header
+        PageDecor(String company, Image logo, boolean plainFirstPage) { this.company = company; this.logo = logo; this.plainFirstPage = plainFirstPage; }
 
         @Override
         public void onEndPage(PdfWriter w, Document d) {
             PdfContentByte cb = w.getDirectContent();
             float top = PageSize.A4.getHeight();
-            if (w.getPageNumber() > 1) {
+            if (w.getPageNumber() > 1 || !plainFirstPage) {
                 ColumnText.showTextAligned(cb, Element.ALIGN_LEFT, new Phrase(company, HEAD), d.left(), top - 52, 0);
                 if (logo != null) {
                     try {

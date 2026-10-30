@@ -16,6 +16,7 @@ public class QuoteItem {
     private String uom;
     private BigDecimal qty = BigDecimal.ONE;
     private BigDecimal unitPrice = BigDecimal.ZERO;
+    @Column(length = 8) private String hsn;   // HSN / SAC code, printed on invoices
     private String imageKey;   // key in S3 / local storage, null when no photo
 
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "quotation_id") @JsonIgnore

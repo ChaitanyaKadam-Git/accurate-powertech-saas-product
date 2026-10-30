@@ -2,7 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Api, CatalogEntry, Customer, Item, LINES, Part, Product, QSection, Summary, lineOf } from './api';
+import { Api, CatalogEntry, Customer, DocTemplate, INVOICES_ENABLED, Item, LINES, Part, Product, QSection, Summary, docTypeOf, lineOf } from './api';
 import { AuthService } from './auth';
 import { ImagePickerComponent } from './image-picker.component';
 
@@ -14,10 +14,16 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
   imports: [ReactiveFormsModule, FormsModule, DecimalPipe, ImagePickerComponent, RouterLink],
   template: `
     <div class="page-h">
-      <div><h1>{{ id ? 'Edit statement' : 'New statement' }} <span class="badge">{{ line.label }}</span>
+      <div><h1>{{ id ? (form.value.refNo || docLabel) : 'New statement' }} <span class="badge">{{ docLabel }}</span> <span class="badge">{{ line.label }}</span>
         @if (enquiryRef) { <a class="badge" [routerLink]="['/enquiries', form.value.enquiryId]">For {{ enquiryRef }}</a> }
         @if (customerCode) { <a class="code" [routerLink]="['/customers', form.value.customerId]">{{ customerCode }}</a> }</h1>
-        <p class="muted">{{ id ? (form.value.refNo || '') + (form.value.clientName ? ' · ' + form.value.clientName : '') : 'Client details, PDF sections and items for a new proposal.' }}</p></div>
+        <p class="muted">{{ id ? (form.value.clientName || '') : 'Client details, PDF sections and items for a new proposal.' }}</p></div>
+      @if (invoicesOn && id && auth.can('QUOTATIONS', 'CREATE') && form.value.docType !== 'INVOICE') {
+        <div>
+          @if (form.value.docType === 'QUOTATION') { <button type="button" class="ghost" (click)="convert('PROFORMA')">Create proforma</button> }
+          <button type="button" (click)="convert('INVOICE')">Create tax invoice</button>
+        </div>
+      }
     </div>
 
     @if (!id) {
@@ -71,7 +77,11 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
         <label>Contact person<input formControlName="contactPerson" /></label>
         <label>Phone<input formControlName="phone" inputmode="numeric" maxlength="10" placeholder="10-digit number" (input)="digitsOnly($event)" />
           @if (form.controls.phone.invalid) { <span class="error small">Phone must be digits only, up to 10 digits.</span> }</label>
-        <label>Project location<input formControlName="projectLocation" /></label>
+        <label>{{ isInvoice ? 'Place of supply / site' : 'Project location' }}<input formControlName="projectLocation" /></label>
+        @if (isInvoice) {
+          <label>Buyer's order / PO no.<input formControlName="poNo" /></label>
+          <label>Due date<input type="date" formControlName="dueDate" /></label>
+        }
         <label class="wide">Client address<input formControlName="clientAddress" /></label>
         <label>Capacity ({{ line.unit }})<input type="number" min="0" formControlName="capacityKw" (keydown)="blockSign($event)" />
           @if (form.controls.capacityKw.invalid) { <span class="error small">Capacity cannot be negative.</span> }</label>
@@ -127,6 +137,20 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
       </div>
 
       <div class="card">
+        <div class="grid" style="margin-bottom:12px">
+          @if (!id && lineTemplates.length) {
+            <label>Template
+              <select [ngModel]="form.value.templateId" [ngModelOptions]="{ standalone: true }" (ngModelChange)="pickTemplate($event)">
+                @for (t of lineTemplates; track t.id) { <option [ngValue]="t.id">{{ t.name }}{{ t.isDefault ? ' (default)' : '' }}</option> }
+              </select>
+            </label>
+          }
+          <label>Title on the PDF<input formControlName="pdfTitle" placeholder="Empty = built-in title" /></label>
+          @if (!isInvoice) {
+            <label class="check"><input type="checkbox" formControlName="showCover" /> Cover page</label>
+            <label class="check"><input type="checkbox" formControlName="showLetter" /> Cover letter</label>
+          }
+        </div>
         <image-picker label="Cover page image for this statement (leave empty to use the company default)"
           [key]="form.value.coverImageKey" (keyChange)="form.patchValue({ coverImageKey: $event ?? '' })" />
         <details>
@@ -165,7 +189,7 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
         <p class="hint">Or type an equipment name: parts from the master and items used before are suggested and fill in the rest.</p>
         <div class="scroll">
           <table class="items">
-            <thead><tr><th>#</th><th>Equipment</th><th>Specification</th><th>Make</th><th>UOM</th><th>Qty</th><th>Unit price</th><th class="r">Amount</th><th>Photo</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Equipment</th><th>Specification</th><th>Make</th><th>HSN</th><th>UOM</th><th>Qty</th><th>Unit price</th><th class="r">Amount</th><th>Photo</th><th></th></tr></thead>
             <tbody formArrayName="items">
               @for (g of items.controls; track g; let i = $index) {
                 <tr [formGroupName]="i">
@@ -173,6 +197,7 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
                   <td><input formControlName="equipment" list="catalog" (change)="fillFromCatalog(i)" /></td>
                   <td><textarea rows="2" formControlName="specification"></textarea></td>
                   <td><input formControlName="make" /></td>
+                  <td><input class="s" formControlName="hsn" maxlength="8" /></td>
                   <td><input class="s" formControlName="uom" /></td>
                   <td><input class="s" type="number" formControlName="qty" /></td>
                   <td><input class="m" type="number" formControlName="unitPrice" /></td>
@@ -216,17 +241,30 @@ export class QuoteFormComponent implements OnInit {
   catalog: CatalogEntry[] = [];
   previous: Summary[] = [];
   customers: Customer[] = [];
+  templates: DocTemplate[] = [];
+  get lineTemplates() { return this.templates.filter(t => t.active && t.docType === (this.form.value.docType || 'QUOTATION') && t.businessLine === (this.form.value.businessLine || 'SOLAR')); }
   products: Product[] = [];
   masterParts: Part[] = [];
   get lineParts() { const l = this.form.value.businessLine || 'SOLAR'; return this.masterParts.filter(p => p.active && (p.businessLine === 'BOTH' || p.businessLine === l)); }
   get lineProducts() { return this.products.filter(p => p.active && p.businessLine === (this.form.value.businessLine || 'SOLAR')); }
   lines = LINES;
   enquiryRef = '';
+  invoicesOn = INVOICES_ENABLED;
+  get isInvoice() { return this.form.value.docType === 'PROFORMA' || this.form.value.docType === 'INVOICE'; }
+  get docLabel() { return docTypeOf(this.form.value.docType).label; }
   get customerCode() { return this.customers.find(c => c.id === this.form.value.customerId)?.code ?? ''; }
   get line() { return lineOf(this.form.value.businessLine); }
 
   form = this.fb.nonNullable.group({
     businessLine: 'SOLAR',
+    docType: 'QUOTATION',
+    templateId: null as number | null,
+    sourceId: null as number | null,
+    poNo: '',
+    dueDate: null as string | null,
+    pdfTitle: '',
+    showCover: true,
+    showLetter: true,
     enquiryId: null as number | null,
     customerId: null as number | null,
     refNo: '',
@@ -257,8 +295,8 @@ export class QuoteFormComponent implements OnInit {
       this.api.list().subscribe(l => (this.previous = l));
       const enq = Number(this.route.snapshot.queryParamMap.get('enquiry'));
       if (enq) { this.fromEnquiry(enq); return; }
-      // a new statement starts with the company's standard sections of the chosen line
-      this.api.template(this.form.value.businessLine!).subscribe(t => this.setSections(t));
+      // a new statement starts from the default template of its type and line
+      this.loadTemplates();
       return;
     }
     this.id = +p;
@@ -328,6 +366,7 @@ export class QuoteFormComponent implements OnInit {
       equipment: [i.equipment ?? '', Validators.required],
       specification: [i.specification ?? ''],
       make: [i.make ?? ''],
+      hsn: [i.hsn ?? ''],
       uom: [i.uom ?? 'Nos.'],
       qty: [i.qty ?? 1],
       unitPrice: [i.unitPrice ?? 0],
@@ -361,6 +400,38 @@ export class QuoteFormComponent implements OnInit {
     if (e.imageKey) this.loadPreview(e.imageKey);
   }
 
+  private loadTemplates() {
+    this.api.templates().subscribe({
+      next: t => { this.templates = t; this.useTemplate(this.defaultTemplate()); },
+      error: () => this.api.template(this.form.value.businessLine!).subscribe(s => this.setSections(s)),
+    });
+  }
+  private defaultTemplate() { return this.lineTemplates.find(t => t.isDefault) ?? this.lineTemplates[0] ?? null; }
+
+  /** Applies a template: its PDF options and a fresh copy of its sections. */
+  private useTemplate(t: DocTemplate | null) {
+    if (!t) { this.api.template(this.form.value.businessLine!).subscribe(s => this.setSections(s)); return; }
+    this.form.patchValue({ templateId: t.id!, pdfTitle: t.pdfTitle ?? '', showCover: t.showCover, showLetter: t.showLetter, showItemPrices: t.showPrices });
+    this.api.template(t.businessLine, t.docType, t.id).subscribe(s => this.setSections(s));
+  }
+
+  pickTemplate(id: number) {
+    const t = this.templates.find(x => x.id === id);
+    if (!t) return;
+    if (this.sections.dirty && !confirm('Switch the template? The PDF sections are replaced with the sections of that template.')) return;
+    this.useTemplate(t);
+  }
+
+  /** Proforma / tax invoice from this document (from its last saved version). */
+  convert(type: string) {
+    const label = docTypeOf(type).label.toLowerCase();
+    if (this.form.dirty && !confirm(`Unsaved changes are not copied. Create the ${label} from the last saved version?`)) return;
+    this.api.convert(this.id!, type).subscribe({
+      next: q => this.router.navigate(['/quote', q.id]).then(() => location.reload()),
+      error: e => (this.error = e.error?.message || `Could not create the ${label}`),
+    });
+  }
+
   /** New statement for an enquiry: its line, customer details and capacity, and the link back to it. */
   private fromEnquiry(id: number) {
     this.api.enquiry(id).subscribe({
@@ -372,9 +443,9 @@ export class QuoteFormComponent implements OnInit {
           clientName: c?.name ?? '', clientAddress: c?.address ?? '', contactPerson: c?.contactPerson ?? '',
           phone: (c?.phone ?? '').replace(/\D/g, '').slice(0, 10), projectLocation: c?.city ?? '',
         });
-        this.api.template(l.key).subscribe(t => this.setSections(t));
+        this.loadTemplates();
       },
-      error: () => this.api.template(this.form.value.businessLine!).subscribe(t => this.setSections(t)),
+      error: () => this.loadTemplates(),
     });
   }
 
@@ -385,7 +456,7 @@ export class QuoteFormComponent implements OnInit {
     if (touched && !confirm('Switch the business line? The PDF sections are replaced with the standard text of that line. Items and client details stay.')) return;
     const l = lineOf(key);
     this.form.patchValue({ businessLine: l.key, gstPercent: l.gst, capacityKw: l.capacity });
-    this.api.template(l.key).subscribe(t => this.setSections(t));
+    this.useTemplate(this.defaultTemplate());
   }
 
   private history: CatalogEntry[] = [];
@@ -400,7 +471,7 @@ export class QuoteFormComponent implements OnInit {
   addPart(id: string) {
     const p = this.masterParts.find(x => String(x.id) === id);
     if (!p) return;
-    this.items.push(this.newItem({ equipment: p.name, specification: p.specification ?? '', make: p.make ?? '', uom: p.uom || 'Nos.', qty: 1, unitPrice: Number(p.unitPrice) || 0, imageKey: p.imageKey }));
+    this.items.push(this.newItem({ equipment: p.name, specification: p.specification ?? '', make: p.make ?? '', hsn: p.hsnCode ?? '', uom: p.uom || 'Nos.', qty: 1, unitPrice: Number(p.unitPrice) || 0, imageKey: p.imageKey }));
     if (p.imageKey) this.loadPreview(p.imageKey);
   }
 
@@ -410,7 +481,7 @@ export class QuoteFormComponent implements OnInit {
     if (!p) return;
     const wasEmpty = this.items.length === 0;
     p.parts.forEach(x => {
-      this.items.push(this.newItem({ equipment: x.name, specification: x.specification ?? '', make: x.make ?? '', uom: x.uom || 'Nos.',
+      this.items.push(this.newItem({ equipment: x.name, specification: x.specification ?? '', make: x.make ?? '', hsn: x.hsn ?? '', uom: x.uom || 'Nos.',
         qty: Number(x.qty) || 1, unitPrice: Number(x.unitPrice) || 0, imageKey: x.imageKey }));
       if (x.imageKey) this.loadPreview(x.imageKey);
     });

@@ -21,13 +21,14 @@ public class QuotationController {
     private final QuotationRepo repo;
     private final PdfService pdf;
     private final StorageService storage;
-    private final TemplateService templates;
     private final UserRepo users;
     private final AuditService audit;
     private final EnquiryController enquiries;
     private final CustomerRepo customers;
+    private final DocTemplateService docTemplates;
+    private final DocTemplateRepo templateRepo;
 
-    record Summary(Long id, String businessLine, Long enquiryId, Long customerId, String customerCode, String refNo, String clientName, String projectLocation, LocalDate quoteDate, BigDecimal total, String createdBy) {}
+    record Summary(Long id, String docType, Long sourceId, String businessLine, Long enquiryId, Long customerId, String customerCode, String refNo, String clientName, String projectLocation, LocalDate quoteDate, BigDecimal total, String createdBy) {}
 
     /** Quotations this person may see: everything in the company, or only their own, depending on the role. */
     @GetMapping @Requires(module = AppModule.QUOTATIONS, right = Right.VIEW)
@@ -39,17 +40,23 @@ public class QuotationController {
         List<Quotation> rows = me.seesAllQuotations() ? repo.findByOwnerIdOrderByIdDesc(me.tenantId())
                 : repo.findByOwnerIdAndCreatedByOrderByIdDesc(me.tenantId(), me.userId());
         return rows.stream()
-                .map(q -> new Summary(q.getId(), q.getBusinessLine(), q.getEnquiryId(), q.getCustomerId(), codes.get(q.getCustomerId()), q.getRefNo(), q.getClientName(), q.getProjectLocation(), q.getQuoteDate(), q.getTotal(),
+                .map(q -> new Summary(q.getId(), q.getDocType(), q.getSourceId(), q.getBusinessLine(), q.getEnquiryId(), q.getCustomerId(), codes.get(q.getCustomerId()), q.getRefNo(), q.getClientName(), q.getProjectLocation(), q.getQuoteDate(), q.getTotal(),
                         q.getCreatedBy() == null ? "" : names.getOrDefault(q.getCreatedBy(), "")))
                 .toList();
     }
 
     /** Default PDF sections for a brand-new statement (not saved). */
+    /** Sections for a new document: from the chosen template, else the default template of that type and line. */
     @GetMapping("/template") @Requires(module = AppModule.QUOTATIONS, right = Right.CREATE)
-    public List<QuoteSection> template(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "SOLAR") String line) {
-        Quotation q = new Quotation();
-        q.setBusinessLine(BusinessLine.of(line).name());
-        return templates.defaults(q, me.tenantId());
+    public List<QuoteSection> template(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "SOLAR") String line,
+                                       @RequestParam(defaultValue = "QUOTATION") String type, @RequestParam(required = false) Long templateId) {
+        return docTemplates.sectionsOf(templateFor(me, templateId, DocType.of(type), BusinessLine.of(line)));
+    }
+
+    private DocTemplate templateFor(AuthUser me, Long templateId, DocType type, BusinessLine line) {
+        if (templateId != null) return templateRepo.findByIdAndTenantId(templateId, me.tenantId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a valid template"));
+        return docTemplates.defaultFor(me.tenantId(), type, line);
     }
 
     @GetMapping("/{id}") @Requires(module = AppModule.QUOTATIONS, right = Right.VIEW)
@@ -66,7 +73,7 @@ public class QuotationController {
         q.setEnquiryId(in.getEnquiryId() == null ? null : enquiries.find(in.getEnquiryId(), me).getId());
         q.setCustomerId(customerFor(in, q, me));
         if (q.getSections().isEmpty()) fillDefaults(q, tid);
-        if (blank(q.getRefNo())) q.setRefNo(nextRef(tid));
+        if (blank(q.getRefNo())) q.setRefNo(nextRef(tid, DocType.of(q.getDocType())));
         Quotation saved = repo.save(q);
         if (saved.getEnquiryId() != null) enquiries.statementCreated(me, saved.getEnquiryId(), saved);
         audit.log(me, AppModule.QUOTATIONS, "CREATE", "Quotation", saved.getId(), saved.getRefNo() + " for " + saved.getClientName());
@@ -82,7 +89,7 @@ public class QuotationController {
         if (in.getEnquiryId() != null && !in.getEnquiryId().equals(q.getEnquiryId())) q.setEnquiryId(enquiries.find(in.getEnquiryId(), me).getId());
         else if (in.getEnquiryId() == null) q.setEnquiryId(null);
         q.setCustomerId(customerFor(in, q, me));
-        if (blank(q.getRefNo())) q.setRefNo(blank(ref) ? nextRef(me.tenantId()) : ref);   // an empty field never wipes the number
+        if (blank(q.getRefNo())) q.setRefNo(blank(ref) ? nextRef(me.tenantId(), DocType.of(q.getDocType())) : ref);   // an empty field never wipes the number
         Quotation saved = repo.save(q);
         audit.log(me, AppModule.QUOTATIONS, "EDIT", "Quotation", saved.getId(), saved.getRefNo() + " for " + saved.getClientName());
         return saved;
@@ -97,10 +104,45 @@ public class QuotationController {
         apply(c, src, me.tenantId());
         c.setEnquiryId(src.getEnquiryId());
         c.setCustomerId(src.getCustomerId());
-        c.setRefNo(nextRef(me.tenantId()));
+        c.setRefNo(nextRef(me.tenantId(), DocType.of(c.getDocType())));
         c.setQuoteDate(LocalDate.now());
         Quotation saved = repo.save(c);
         audit.log(me, AppModule.QUOTATIONS, "CREATE", "Quotation", saved.getId(), "Duplicated from " + src.getRefNo());
+        return saved;
+    }
+
+    /**
+     * Proforma invoice or tax invoice made from a quotation (or a proforma): same customer, enquiry, line, items and GST, the
+     * default template of the new type, its own number (PI/..., INV/...) and today's date.
+     */
+    @PostMapping("/{id}/convert") @Requires(module = AppModule.QUOTATIONS, right = Right.CREATE)
+    public Quotation convert(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @RequestParam String type) {
+        Quotation src = own(id, me);
+        DocType to = DocType.of(type);
+        if (to == DocType.QUOTATION) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose proforma or invoice");
+        if (DocType.of(src.getDocType()) == DocType.INVOICE) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A tax invoice cannot be converted again");
+        Quotation c = new Quotation();
+        c.setOwnerId(me.tenantId());
+        c.setCreatedBy(me.userId());
+        apply(c, src, me.tenantId());
+        c.setEnquiryId(src.getEnquiryId());
+        c.setCustomerId(src.getCustomerId());
+        c.setDocType(to.name());
+        c.setSourceId(src.getId());
+        c.setQuoteDate(LocalDate.now());
+        DocTemplate t = docTemplates.defaultFor(me.tenantId(), to, BusinessLine.of(src.getBusinessLine()));
+        c.setTemplateId(t.getId());
+        c.setPdfTitle(t.getPdfTitle());
+        c.setShowCover(t.isShowCover());
+        c.setShowLetter(t.isShowLetter());
+        c.setShowItemPrices(true);
+        c.getSections().clear();
+        for (QuoteSection s : docTemplates.sectionsOf(t)) { s.setQuotation(c); c.getSections().add(s); }
+        if (c.getPoNo() == null && src.getEnquiryId() != null) c.setPoNo(enquiries.find(src.getEnquiryId(), me).getOrderNo());
+        c.setRefNo(nextRef(me.tenantId(), to));
+        Quotation saved = repo.save(c);
+        audit.log(me, AppModule.QUOTATIONS, "CREATE", "Quotation", saved.getId(), to.label + " " + saved.getRefNo() + " from " + src.getRefNo());
+        if (saved.getEnquiryId() != null) enquiries.documentCreated(me, saved.getEnquiryId(), saved, to.label + " " + saved.getRefNo() + " created from " + src.getRefNo());
         return saved;
     }
 
@@ -143,12 +185,14 @@ public class QuotationController {
     }
 
     private void fillDefaults(Quotation q, Long uid) {
-        for (QuoteSection s : templates.defaults(q, uid)) { s.setQuotation(q); q.getSections().add(s); }
+        DocTemplate t = q.getTemplateId() == null ? null : templateRepo.findByIdAndTenantId(q.getTemplateId(), uid).orElse(null);
+        if (t == null) t = docTemplates.defaultFor(uid, DocType.of(q.getDocType()), BusinessLine.of(q.getBusinessLine()));
+        for (QuoteSection s : docTemplates.sectionsOf(t)) { s.setQuotation(q); q.getSections().add(s); }
     }
 
     /** QTN/<year>/<n>: one more than the highest number used this year, so deleting a statement never repeats a number. */
-    private String nextRef(Long uid) {
-        String prefix = "QTN/" + LocalDate.now().getYear() + "/";
+    private String nextRef(Long uid, DocType type) {
+        String prefix = type.prefix + "/" + LocalDate.now().getYear() + "/";
         int max = 0;
         for (String r : repo.findRefNos(uid, prefix + "%")) {
             try { max = Math.max(max, Integer.parseInt(r.substring(prefix.length()).trim())); } catch (NumberFormatException ignored) { }
@@ -172,6 +216,13 @@ public class QuotationController {
     /** Copies editable fields; items and sections are re-created and image keys are checked. */
     private void apply(Quotation t, Quotation in, Long uid) {
         t.setBusinessLine(BusinessLine.of(in.getBusinessLine()).name());
+        t.setDocType(DocType.of(in.getDocType()).name());
+        t.setTemplateId(in.getTemplateId() == null ? null : templateRepo.findByIdAndTenantId(in.getTemplateId(), uid).map(DocTemplate::getId).orElse(null));
+        t.setPdfTitle(blank(in.getPdfTitle()) ? null : in.getPdfTitle().trim());
+        t.setShowCover(in.isShowCover());
+        t.setShowLetter(in.isShowLetter());
+        t.setPoNo(blank(in.getPoNo()) ? null : in.getPoNo().trim());
+        t.setDueDate(in.getDueDate());
         t.setRefNo(in.getRefNo());
         t.setQuoteDate(in.getQuoteDate() == null ? LocalDate.now() : in.getQuoteDate());
         t.setClientName(in.getClientName());
@@ -200,6 +251,7 @@ public class QuotationController {
             x.setQty(i.getQty());
             x.setUnitPrice(i.getUnitPrice());
             x.setImageKey(storage.own(uid, i.getImageKey()));
+            x.setHsn(i.getHsn() == null || i.getHsn().isBlank() ? null : i.getHsn().trim());
             x.setQuotation(t);
             t.getItems().add(x);
         }
@@ -209,10 +261,10 @@ public class QuotationController {
         for (QuoteSection s : in.getSections() == null ? List.<QuoteSection>of() : in.getSections()) {
             QuoteSection x = new QuoteSection();
             x.setPosition(p++);
-            x.setKind(List.of("TEXT", "BOM", "OFFER").contains(s.getKind()) ? s.getKind() : "TEXT");
+            x.setKind(s.getKind() != null && List.of("TEXT", "BOM", "OFFER").contains(s.getKind()) ? s.getKind() : "TEXT");
             x.setTitle(s.getTitle());
             x.setContent(s.getContent());
-            x.setStyle(List.of("BULLETS", "PARAGRAPH", "TABLE").contains(s.getStyle()) ? s.getStyle() : "BULLETS");
+            x.setStyle(s.getStyle() != null && List.of("BULLETS", "PARAGRAPH", "TABLE").contains(s.getStyle()) ? s.getStyle() : "BULLETS");
             x.setVisible(s.isVisible());
             x.setImageColumns(Math.max(1, Math.min(3, s.getImageColumns())));
             for (String k : s.getImageKeys() == null ? List.<String>of() : s.getImageKeys()) {

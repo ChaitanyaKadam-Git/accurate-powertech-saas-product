@@ -2,7 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Api, Enquiry, EnquiryDetail, LINES, SOURCES, STAGES, lineOf, stageOf } from './api';
+import { Api, Enquiry, EnquiryDetail, LINES, SOURCES, STAGES, docTypeOf, lineOf, stageOf } from './api';
 import { AuthService } from './auth';
 import { IconComponent } from './icon.component';
 
@@ -74,10 +74,10 @@ const KIND: Record<string, string> = { CREATED: 'Created', STAGE: 'Stage', CALL:
         </div>
 
         <div class="card">
-          <div class="card-h"><div><h3>Statements ({{ d.quotations.length }})</h3><p>Quotations made for this enquiry.</p></div></div>
+          <div class="card-h"><div><h3>Documents ({{ d.quotations.length }})</h3><p>Quotations, proforma invoices and tax invoices for this enquiry.</p></div></div>
           @for (q of d.quotations; track q.id) {
             <div class="list-row">
-              <a [routerLink]="['/quote', q.id]"><b>{{ q.refNo }}</b></a><span class="muted small">{{ q.quoteDate | date: 'dd MMM yyyy' }}</span><b>&#8377;{{ q.total | number: '1.0-0' }}</b>
+              <a [routerLink]="['/quote', q.id]"><b>{{ q.refNo }}</b></a><span class="badge">{{ typeLabel(q.docType) }}</span><span class="muted small">{{ q.quoteDate | date: 'dd MMM yyyy' }}</span><b>&#8377;{{ q.total | number: '1.0-0' }}</b>
             </div>
           }
           @if (!d.quotations.length) { <p class="muted">No statement yet. "New statement" fills in this customer and links it here.</p> }
@@ -182,6 +182,7 @@ export class EnquiryDetailComponent implements OnInit {
   get won() { return !!this.d && this.d.enquiry.stage !== 'LOST' && this.pos >= 4; }
   get followUpDue() { return !!this.d?.enquiry.nextFollowUp && this.d.enquiry.nextFollowUp <= today(); }
   get contactLine() { const c = this.d?.customer; return [c?.contactPerson, c?.phone].filter(Boolean).join(' · '); }
+  typeLabel(k: string) { return docTypeOf(k).label; }
   kindLabel(k: string) { return KIND[k] ?? k; }
   stageLabel(k: string) { return stageOf(k).label; }
   /** Date a stage was reached, from the timeline (latest move into it). */

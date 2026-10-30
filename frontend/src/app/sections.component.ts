@@ -1,6 +1,6 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Api, Company, LINES, Section, lineOf } from './api';
 import { AuthService } from './auth';
 import { BrandService } from './brand';
@@ -8,7 +8,7 @@ import { ImagePickerComponent } from './image-picker.component';
 
 @Component({
   standalone: true,
-  imports: [FormsModule, ImagePickerComponent],
+  imports: [FormsModule, ImagePickerComponent, RouterLink],
   template: `
     <div class="page-h"><div><h1>Settings</h1><p class="muted">Company details, standard text and your account.</p></div></div>
     <div class="tabs">
@@ -25,6 +25,7 @@ import { ImagePickerComponent } from './image-picker.component';
         <div class="grid">
           <label>Company name<input [(ngModel)]="c.companyName" /></label>
           <label class="wide">Company address<input [(ngModel)]="c.address" /></label>
+          <label>Company GSTIN (printed on invoices)<input [(ngModel)]="c.gstin" maxlength="15" placeholder="27ABCDE1234F1Z5" (input)="c.gstin = (c.gstin || '').toUpperCase()" /></label>
           <label>Signatory name (for example your manager)<input [(ngModel)]="c.signatoryName" /></label>
           <label>Signatory designation<input [(ngModel)]="c.signatoryTitle" /></label>
           <label>Signatory phone<input [(ngModel)]="c.signatoryPhone" /></label>
@@ -45,6 +46,7 @@ import { ImagePickerComponent } from './image-picker.component';
     }
 
     @if (tab === 'text' && auth.can('TEMPLATE_DATA', 'VIEW')) {
+      <p class="notice">New statements now start from <a routerLink="/templates">Masters › Templates</a> (several per type and line). This standard text was copied into the default quotation templates the first time templates were opened; changing it here only affects templates created afterwards.</p>
       <fieldset class="plain" [disabled]="!auth.can('TEMPLATE_DATA', 'EDIT')">
       <div class="card">
         <div class="seg" style="margin-bottom:14px">
@@ -110,7 +112,7 @@ export class SectionsComponent implements OnInit {
   tab = 'company';
   sections: Section[] = [];
   c: Company = { companyName: '', address: '', logoKey: null, coverImageKey: null, diagramImageKey: null,
-    signatoryName: '', signatoryTitle: '', signatoryPhone: '', signatoryEmail: '' };
+    signatoryName: '', signatoryTitle: '', signatoryPhone: '', signatoryEmail: '', gstin: '' };
   saved = false;
   companySaved = false;
   email = ''; newEmail = ''; emailPassword = ''; oldPassword = ''; newPassword = '';
@@ -148,11 +150,11 @@ export class SectionsComponent implements OnInit {
   }
 
   saveCompany() {
-    this.api.saveCompany(this.c).subscribe(() => {
+    this.api.saveCompany(this.c).subscribe({ error: e => alert(e.error?.message || 'Could not save'), next: () => {
       this.brand.refresh();   // refresh the name and logo in the top bar
       this.companySaved = true;
       setTimeout(() => (this.companySaved = false), 2500);
-    });
+    } });
   }
 
   addSection() {

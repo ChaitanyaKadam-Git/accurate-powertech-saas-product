@@ -2,7 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { Api, LINES, Summary, lineOf } from './api';
+import { Api, LINES, Summary, VISIBLE_DOC_TYPES, docTypeOf, lineOf } from './api';
 import { AuthService } from './auth';
 import { IconComponent } from './icon.component';
 
@@ -11,23 +11,25 @@ import { IconComponent } from './icon.component';
   imports: [RouterLink, DecimalPipe, DatePipe, FormsModule, IconComponent],
   template: `
     <div class="page-h">
-      <div><h1>Statements</h1><p class="muted">Create, duplicate and download proposals.</p></div>
+      <div><h1>Statements</h1><p class="muted">Create, duplicate and download quotations.</p></div>
       @if (auth.can('QUOTATIONS', 'CREATE')) { <a class="btn" routerLink="/quote/new"><app-icon name="plus" [size]="18" /> New statement</a> }
     </div>
     <div class="card">
       <div class="toolbar">
         <label class="grow-field">Search<input placeholder="Client, customer code, reference or location" [(ngModel)]="query" /></label>
+        <label [hidden]="types.length < 2">Type<select [(ngModel)]="typeF"><option value="">All types</option>@for (t of types; track t.key) { <option [value]="t.key">{{ t.label }}</option> }</select></label>
         <label>Business line<select [(ngModel)]="lineF"><option value="">All lines</option>@for (l of lines; track l.key) { <option [value]="l.key">{{ l.label }}</option> }</select></label>
       </div>
       @if (shown.length === 0) { <p class="muted">No statements found.</p> }
       @else {
         <div class="scroll">
           <table>
-            <thead><tr><th>Ref</th><th>Line</th><th>Date</th><th>Client</th><th>Customer code</th><th>Location</th><th class="r">Total (incl. GST)</th>@if (auth.isAdmin() || showOwner) { <th>Created by</th> }<th>Actions</th></tr></thead>
+            <thead><tr><th>Ref</th>@if (types.length > 1) { <th>Type</th> }<th>Line</th><th>Date</th><th>Client</th><th>Customer code</th><th>Location</th><th class="r">Total (incl. GST)</th>@if (auth.isAdmin() || showOwner) { <th>Created by</th> }<th>Actions</th></tr></thead>
             <tbody>
               @for (r of shown; track r.id) {
                 <tr>
                   <td><a [routerLink]="['/quote', r.id]">{{ r.refNo }}</a></td>
+                  @if (types.length > 1) { <td><span class="badge" [class.ok]="r.docType === 'INVOICE'" [class.warn]="r.docType === 'PROFORMA'">{{ typeOf(r.docType).label }}</span></td> }
                   <td><span class="badge">{{ lineOf(r.businessLine).label }}</span></td>
                   <td>{{ r.quoteDate | date: 'dd MMM yyyy' }}</td>
                   <td><b>{{ r.clientName || '-' }}</b></td>
@@ -58,6 +60,9 @@ export class QuoteListComponent implements OnInit {
   rows: Summary[] = [];
   query = '';
   lineF = '';
+  typeF = '';
+  types = VISIBLE_DOC_TYPES;
+  typeOf = docTypeOf;
   lines = LINES;
   lineOf = lineOf;
   get showOwner() { return this.rows.some(r => !!r.createdBy); }
@@ -67,7 +72,7 @@ export class QuoteListComponent implements OnInit {
 
   get shown() {
     const q = this.query.trim().toLowerCase();
-    return this.rows.filter(r => (!this.lineF || (r.businessLine || 'SOLAR') === this.lineF)
+    return this.rows.filter(r => (!this.typeF || (r.docType || 'QUOTATION') === this.typeF) && (!this.lineF || (r.businessLine || 'SOLAR') === this.lineF)
       && (!q || [r.refNo, r.customerCode, r.clientName, r.projectLocation].some(v => (v || '').toLowerCase().includes(q))));
   }
 

@@ -1,6 +1,8 @@
 package com.saas.quote;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -12,7 +14,7 @@ public class CompanyController {
     private final AuditService audit;
 
     record Company(String companyName, String address, String logoKey, String coverImageKey, String diagramImageKey,
-                   String signatoryName, String signatoryTitle, String signatoryPhone, String signatoryEmail) {}
+                   String signatoryName, String signatoryTitle, String signatoryPhone, String signatoryEmail, String gstin) {}
 
     /** Company name and logo are shown to every signed-in person; the details live on the company owner's record. */
     @GetMapping
@@ -21,7 +23,7 @@ public class CompanyController {
     private Company read(Long tid) {
         AppUser u = users.findById(tid).orElseThrow();
         return new Company(u.getCompanyName(), u.getAddress(), u.getLogoKey(), u.getCoverImageKey(), u.getDiagramImageKey(),
-                u.getSignatoryName(), u.getSignatoryTitle(), u.getSignatoryPhone(), u.getSignatoryEmail());
+                u.getSignatoryName(), u.getSignatoryTitle(), u.getSignatoryPhone(), u.getSignatoryEmail(), u.getGstin());
     }
 
     @PutMapping @Requires(module = AppModule.TEMPLATES, right = Right.EDIT)
@@ -37,6 +39,9 @@ public class CompanyController {
         u.setSignatoryTitle(c.signatoryTitle());
         u.setSignatoryPhone(c.signatoryPhone());
         u.setSignatoryEmail(c.signatoryEmail());
+        String g = c.gstin() == null || c.gstin().isBlank() ? null : c.gstin().trim().toUpperCase();
+        if (g != null && !CustomerController.GSTIN.matcher(g).matches()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "GSTIN must be 15 characters, for example 27ABCDE1234F1Z5");
+        u.setGstin(g);
         users.save(u);
         audit.log(me, AppModule.TEMPLATES, "EDIT", "Company", uid, "Company header, logo and signatory");
         return read(uid);

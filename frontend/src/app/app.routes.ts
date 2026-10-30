@@ -18,6 +18,7 @@ export const routes: Routes = [
       { path: 'enquiries/:id', loadComponent: () => import('./enquiry-detail.component').then(m => m.EnquiryDetailComponent), canActivate: [permGuard('ENQUIRIES', 'VIEW')] },
       { path: 'customers/:id', loadComponent: () => import('./customer-detail.component').then(m => m.CustomerDetailComponent), canActivate: [permGuard('CUSTOMERS', 'VIEW')] },
       { path: 'customers', loadComponent: () => import('./customers.component').then(m => m.CustomersComponent), canActivate: [permGuard('CUSTOMERS', 'VIEW')] },
+      { path: 'templates', loadComponent: () => import('./templates.component').then(m => m.TemplatesComponent), canActivate: [permGuard('TEMPLATE_DATA', 'VIEW')] },
       { path: 'parts', loadComponent: () => import('./parts.component').then(m => m.PartsComponent), canActivate: [permGuard('PARTS', 'VIEW')] },
       { path: 'products', loadComponent: () => import('./products.component').then(m => m.ProductsComponent), canActivate: [permGuard('PRODUCTS', 'VIEW')] },
       { path: 'settings', loadComponent: () => import('./sections.component').then(m => m.SectionsComponent) },
