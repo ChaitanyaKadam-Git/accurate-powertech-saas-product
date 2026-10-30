@@ -15,7 +15,7 @@ const EMPTY: Part = { name: '', category: '', businessLine: 'BOTH', specificatio
   template: `
     <div class="page-h">
       <div><h1>Parts</h1><p class="muted">Every component once, with its current price.</p></div>
-      @if (auth.can('PRODUCTS', 'CREATE')) {
+      @if (auth.can('PARTS', 'CREATE')) {
         <div>
           <button class="ghost" (click)="openImport()"><app-icon name="upload" [size]="18" /> Import Excel</button>
           <button class="ghost" (click)="bulk = true; bulkText = ''; bulkResult = ''" title="Paste rows copied from Excel">Paste rows</button>
@@ -51,8 +51,8 @@ const EMPTY: Part = { name: '', category: '', businessLine: 'BOTH', specificatio
               <td class="r">{{ p.usedIn ? p.usedIn + ' product' + (p.usedIn > 1 ? 's' : '') : '-' }}</td>
               <td><span class="badge" [class.ok]="p.active" [class.off]="!p.active">{{ p.active ? 'Active' : 'Inactive' }}</span></td>
               <td class="actions">
-                <button class="link" (click)="open(p)">{{ auth.can('PRODUCTS', 'EDIT') ? 'Edit' : 'View' }}</button>
-                @if (auth.can('PRODUCTS', 'DELETE')) { <button class="link danger" (click)="remove(p)">Delete</button> }
+                <button class="link" (click)="open(p)">{{ auth.can('PARTS', 'EDIT') ? 'Edit' : 'View' }}</button>
+                @if (auth.can('PARTS', 'DELETE')) { <button class="link danger" (click)="remove(p)">Delete</button> }
               </td>
             </tr>
           }
@@ -103,7 +103,7 @@ const EMPTY: Part = { name: '', category: '', businessLine: 'BOTH', specificatio
             <button class="ghost" (click)="template('csv')"><app-icon name="download" [size]="18" /> CSV template</button>
           </p>
           <label>Filled template (.xlsx or .csv)<input type="file" accept=".xlsx,.csv" (change)="pickFile($event)" /></label>
-          @if (auth.can('PRODUCTS', 'EDIT')) {
+          @if (auth.can('PARTS', 'EDIT')) {
             <label class="check" style="margin-top:10px"><input type="checkbox" [(ngModel)]="updateExisting" /> Update existing parts (same part name + make): new price and details replace the old ones</label>
           }
           @if (impError) { <p class="error">{{ impError }}</p> }
@@ -166,7 +166,7 @@ export class PartsComponent implements OnInit {
   bulk = false; bulkText = ''; bulkResult = ''; bulkFailed = false;
   imp = false; file: File | null = null; report: PartImportReport | null = null; impError = ''; updateExisting = false;
 
-  get editable() { return this.f?.id ? this.auth.can('PRODUCTS', 'EDIT') : this.auth.can('PRODUCTS', 'CREATE'); }
+  get editable() { return this.f?.id ? this.auth.can('PARTS', 'EDIT') : this.auth.can('PARTS', 'CREATE'); }
   get categories() { return [...new Set(this.rows.map(r => r.category).filter((c): c is string => !!c))].sort((a, b) => a.localeCompare(b)); }
   lineLabel(l: string) { return l === 'BOTH' ? 'Both' : lineOf(l).label; }
   count(line: string) { return this.rows.filter(p => p.businessLine === line || p.businessLine === 'BOTH').length; }

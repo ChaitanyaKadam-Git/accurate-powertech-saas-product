@@ -15,7 +15,7 @@ public class AdminRoleController {
     private final UserRepo users;
     private final AuditService audit;
 
-    record ModuleInfo(String key, String label, String group, boolean adminOnly, List<String> rights) {}
+    record ModuleInfo(String key, String label, String group, boolean adminOnly, boolean ready, List<String> rights) {}
     record RoleDto(Long id, String name, String description, boolean systemRole, boolean adminRole, String quotationScope,
                    List<String> rights, long userCount) {}
     record Save(String name, String description, String quotationScope, List<String> rights) {}
@@ -23,7 +23,7 @@ public class AdminRoleController {
     @GetMapping("/modules")
     public List<ModuleInfo> modules() {
         return Arrays.stream(AppModule.values())
-                .map(m -> new ModuleInfo(m.name(), m.label, m.group, m.adminOnly, m.rights.stream().map(Enum::name).toList())).toList();
+                .map(m -> new ModuleInfo(m.name(), m.label, m.group, m.adminOnly, m.ready, m.rights.stream().map(Enum::name).toList())).toList();
     }
 
     @GetMapping("/roles")

@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
-/** Masters > Parts. Part of the product master, so it uses the PRODUCTS rights. */
+/** Masters > Parts. Uses the PARTS rights. */
 @RestController @RequestMapping("/api/parts") @RequiredArgsConstructor @Transactional
 public class PartController {
     private final PartRepo repo;
@@ -37,8 +37,8 @@ public class PartController {
     /** ?line=GENSET gives the parts a genset product may use (GENSET and BOTH). Quotation creators may read it too. */
     @GetMapping
     public List<Row> list(@AuthenticationPrincipal AuthUser me, @RequestParam(required = false) String line) {
-        if (!me.can(AppModule.PRODUCTS, Right.VIEW) && !me.canAny(AppModule.QUOTATIONS, Right.CREATE, Right.EDIT))
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to view (" + AppModule.PRODUCTS.label + ")");
+        if (!me.can(AppModule.PARTS, Right.VIEW) && !me.can(AppModule.PRODUCTS, Right.VIEW) && !me.canAny(AppModule.QUOTATIONS, Right.CREATE, Right.EDIT))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to view (" + AppModule.PARTS.label + ")");
         Map<Long, Long> used = new HashMap<>();
         for (Object[] r : repo.usage(me.tenantId())) used.put((Long) r[0], (Long) r[1]);
         String l = line == null || line.isBlank() ? null : BusinessLine.of(line).name();
@@ -47,7 +47,7 @@ public class PartController {
                 .map(p -> row(p, used.getOrDefault(p.getId(), 0L))).toList();
     }
 
-    @PostMapping @Requires(module = AppModule.PRODUCTS, right = Right.CREATE)
+    @PostMapping @Requires(module = AppModule.PARTS, right = Right.CREATE)
     public Row create(@AuthenticationPrincipal AuthUser me, @RequestBody Save in) {
         Part p = new Part();
         p.setTenantId(me.tenantId());
@@ -55,12 +55,12 @@ public class PartController {
         p.setCreatedAt(Instant.now());
         apply(p, in, me);
         Part saved = repo.save(p);
-        audit.log(me, AppModule.PRODUCTS, "CREATE", "Part", saved.getId(), describe(saved));
+        audit.log(me, AppModule.PARTS, "CREATE", "Part", saved.getId(), describe(saved));
         return row(saved, 0);
     }
 
     /** A new price or detail applies to every product that uses the part (statements already made keep their copy). */
-    @PutMapping("/{id}") @Requires(module = AppModule.PRODUCTS, right = Right.EDIT)
+    @PutMapping("/{id}") @Requires(module = AppModule.PARTS, right = Right.EDIT)
     public Row update(@AuthenticationPrincipal AuthUser me, @PathVariable Long id, @RequestBody Save in) {
         Part p = find(id, me);
         BigDecimal before = p.getUnitPrice();
@@ -68,11 +68,11 @@ public class PartController {
         List<String> users = repo.usedBy(p.getId());
         String change = before != null && p.getUnitPrice() != null && before.compareTo(p.getUnitPrice()) != 0
                 ? "; price " + before.stripTrailingZeros().toPlainString() + " -> " + p.getUnitPrice().stripTrailingZeros().toPlainString() + " in " + users.size() + " product(s)" : "";
-        audit.log(me, AppModule.PRODUCTS, "EDIT", "Part", p.getId(), describe(p) + change);
+        audit.log(me, AppModule.PARTS, "EDIT", "Part", p.getId(), describe(p) + change);
         return row(repo.save(p), users.size());
     }
 
-    @DeleteMapping("/{id}") @Requires(module = AppModule.PRODUCTS, right = Right.DELETE)
+    @DeleteMapping("/{id}") @Requires(module = AppModule.PARTS, right = Right.DELETE)
     public void delete(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
         Part p = find(id, me);
         List<String> users = repo.usedBy(p.getId());
@@ -80,7 +80,7 @@ public class PartController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "\"" + p.getName() + "\" is used in " + users.size() + " product(s): "
                     + String.join(", ", users.subList(0, Math.min(5, users.size()))) + (users.size() > 5 ? " ..." : "")
                     + ". Remove it from those products first, or mark it inactive.");
-        audit.log(me, AppModule.PRODUCTS, "DELETE", "Part", p.getId(), describe(p));
+        audit.log(me, AppModule.PARTS, "DELETE", "Part", p.getId(), describe(p));
         repo.delete(p);
     }
 
@@ -90,7 +90,7 @@ public class PartController {
     record ImportReport(boolean committed, boolean update, int total, int newCount, int updateCount, int invalid,
                         int created, int updated, List<ImportRow> rows) {}
 
-    @GetMapping("/import/template") @Requires(module = AppModule.PRODUCTS, right = Right.CREATE)
+    @GetMapping("/import/template") @Requires(module = AppModule.PARTS, right = Right.CREATE)
     public ResponseEntity<byte[]> template(@AuthenticationPrincipal AuthUser me, @RequestParam(defaultValue = "xlsx") String format) throws IOException {
         boolean csv = "csv".equalsIgnoreCase(format);
         List<String> cats = repo.findByTenantIdOrderByCategoryAscNameAsc(me.tenantId()).stream()
@@ -105,11 +105,11 @@ public class PartController {
      * commit=false: check only, nothing is saved. commit=true: create the NEW rows and, with update=true, update the parts
      * that already exist (same name + make). Rows with errors are always skipped.
      */
-    @PostMapping("/import") @Requires(module = AppModule.PRODUCTS, right = Right.CREATE)
+    @PostMapping("/import") @Requires(module = AppModule.PARTS, right = Right.CREATE)
     public ImportReport importParts(@AuthenticationPrincipal AuthUser me, @RequestParam("file") MultipartFile file,
                                     @RequestParam(defaultValue = "false") boolean commit, @RequestParam(defaultValue = "false") boolean update) {
-        if (update && !me.can(AppModule.PRODUCTS, Right.EDIT))
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to edit (" + AppModule.PRODUCTS.label + ")");
+        if (update && !me.can(AppModule.PARTS, Right.EDIT))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to edit (" + AppModule.PARTS.label + ")");
         List<PartImportService.Row> in = importer.read(file);
         Set<String> seen = new HashSet<>();
         List<ImportRow> out = new ArrayList<>();
@@ -145,7 +145,7 @@ public class PartController {
             out.add(new ImportRow(r.row(), r.name(), make, blankToNull(r.category()), blankToNull(r.uom()), r.unitPrice(), r.line(), status, errs));
         }
         int invalid = in.size() - news - updates;
-        if (commit) audit.log(me, AppModule.PRODUCTS, "IMPORT", "Part", null, file.getOriginalFilename() + ": " + created + " created, " + updated
+        if (commit) audit.log(me, AppModule.PARTS, "IMPORT", "Part", null, file.getOriginalFilename() + ": " + created + " created, " + updated
                 + " updated (" + priceChanges + " price change(s)), " + invalid + " skipped");
         return new ImportReport(commit, update, in.size(), news, updates, invalid, created, updated, out);
     }

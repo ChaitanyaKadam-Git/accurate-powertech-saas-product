@@ -124,6 +124,15 @@ check("built-in Admin role cannot be edited", s == 400)
 s, spare = call("POST", "/admin/roles", ADMIN, {"name": "Spare", "quotationScope": "OWN", "rights": ["QUOTATIONS:VIEW"]})
 
 # ---------------------------------------------------------------- 4. users (single)
+print("\n== Rights grid follows the menu")
+s, mods = call("GET", "/admin/modules", ADMIN)
+check("modules in menu order with menu names", s == 200 and [m["label"] for m in mods] == ["Users & Grant access", "Roles & rights", "Activity log", "Enquiries", "Statements",
+      "Statement PDF", "Revision history", "Products", "Parts", "Customers", "Company details", "Standard text", "Email", "WhatsApp"], [m["label"] for m in mods] if s == 200 else s)
+check("menu groups", [m["group"] for m in mods][:4] == ["Administration"] * 3 + ["Workspace"] and {m["group"] for m in mods} == {"Administration", "Workspace", "Masters", "Settings", "Communication"})
+check("screens not built yet are marked", {m["key"] for m in mods if not m["ready"]} == {"REVISIONS", "EMAIL", "WHATSAPP"})
+mgr_rights = set(next(r for r in call("GET", "/admin/roles", ADMIN)[1] if r["name"] == "Manager")["rights"])
+check("Manager has the new Enquiries and Parts rights", {"ENQUIRIES:VIEW", "ENQUIRIES:DELETE", "PARTS:VIEW", "PARTS:DELETE"} <= mgr_rights)
+
 print("\n== Users: single create")
 people = {}
 def add(name, email, mobile, role, desig="", dept=""):
@@ -494,7 +503,7 @@ check("updated part took the new details", pl["Power cable 3.5C x 70 sq mm"]["sp
 check("sales exec cannot import", call("POST", "/parts/import", AMIT, params={"commit": "false"}, files=cf)[0] == 403)
 check("wrong file type refused", call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files={"file": ("parts.txt", b"x", "text/plain")})[0] == 400)
 check("file without the header refused", call("POST", "/parts/import", PRIYA, params={"commit": "false"}, files={"file": ("p.csv", b"Name,Price\r\nx,1\r\n", "text/csv")})[0] == 400)
-s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PRODUCTS", "action": "IMPORT", "size": 10})
+s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PARTS", "action": "IMPORT", "size": 10})
 check("imports in the audit trail", s == 200 and a["total"] == 2)
 
 print("\n== Products")
@@ -535,7 +544,9 @@ check("sales exec can list products", call("GET", "/products", AMIT)[0] == 200)
 check("sales exec cannot create products", prod(AMIT, {"businessLine": "GENSET", "name": "X"})[0] == 403)
 check("no product or quotation rights: products refused", call("GET", "/products", REENA)[0] == 403)
 s, a = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PRODUCTS", "size": 500})
-check("parts and products in the audit trail", s == 200 and {"Part", "Product"} <= {x["entityType"] for x in a["items"]} and any("99000" in (x["detail"] or "") for x in a["items"]))
+s2, a2 = call("GET", "/admin/activity/audit", ADMIN, params={"module": "PARTS", "size": 500})
+check("products under Products, parts under Parts in the audit trail", s == 200 and {x["entityType"] for x in a["items"]} == {"Product"}
+      and {x["entityType"] for x in a2["items"]} == {"Part"} and any("99000" in (x["detail"] or "") for x in a2["items"]))
 
 # ---------------------------------------------------------------- 11d. Customer flow (enquiry -> order -> commissioning)
 OTHER_T = call("POST", "/auth/register", body={"email": "early@othersolar.local", "password": "Other@2026x", "companyName": "Early Other"})[1]["token"]
@@ -605,7 +616,15 @@ s, h = call("GET", f"/customers/{cmetro['id']}/history", PRIYA)
 check("customer history: enquiry, its statement and the older same-name statement", s == 200 and h["enquiryIds"] == [E1]
       and [x["id"] for x in h["statements"]] == [qe["id"], q4["id"]] and h["statements"][1]["enquiryId"] is None, h if s == 200 else s)
 check("customer with enquiries cannot be deleted", call("DELETE", f"/customers/{cmetro['id']}", PRIYA)[0] == 409)
-check("no CUSTOMERS rights: enquiries refused", call("GET", "/enquiries", REENA)[0] == 403)
+check("no ENQUIRIES rights: enquiries refused", call("GET", "/enquiries", REENA)[0] == 403)
+s, cr = call("POST", "/admin/roles", ADMIN, {"name": "Customers only", "quotationScope": "ALL", "rights": ["CUSTOMERS:VIEW"]})
+s, cu = call("POST", "/admin/users", ADMIN, {"name": "Chetan Rao", "email": "chetan@accuratepowertech.local", "mobile": "9811100088", "roleId": cr["id"]})
+CHETAN = first_login("chetan@accuratepowertech.local", cu["tempPassword"], "Welcome@2026")
+check("Customers right alone: customers yes, enquiries no", call("GET", "/customers", CHETAN)[0] == 200 and call("GET", "/enquiries", CHETAN)[0] == 403)
+s, pr = call("POST", "/admin/roles", ADMIN, {"name": "Products only", "quotationScope": "ALL", "rights": ["PRODUCTS:VIEW", "PRODUCTS:CREATE"]})
+s, pu = call("POST", "/admin/users", ADMIN, {"name": "Pooja Nair", "email": "pooja@accuratepowertech.local", "mobile": "9811100089", "roleId": pr["id"]})
+POOJA = first_login("pooja@accuratepowertech.local", pu["tempPassword"], "Welcome@2026")
+check("Products rights alone: can read parts for products but not add parts", call("GET", "/parts", POOJA)[0] == 200 and call("POST", "/parts", POOJA, {"name": "x"})[0] == 403)
 check("sales exec cannot delete an enquiry", call("DELETE", f"/enquiries/{E1}", AMIT)[0] == 403)
 s, e4 = enq(PRIYA, {"customerId": c1["id"], "title": "Temporary"})
 s, q4 = call("POST", "/quotations", PRIYA, {"clientName": "Shree Sai Industries", "enquiryId": e4["enquiry"]["id"]})

@@ -16,7 +16,7 @@ import { IconComponent } from './icon.component';
         <div><h1>{{ h.customer.name }} <span class="code">{{ h.customer.code }}</span></h1>
           <p class="muted">{{ h.customer.contactPerson || '' }}{{ h.customer.phone ? ' · ' + h.customer.phone : '' }}{{ h.customer.email ? ' · ' + h.customer.email : '' }}{{ h.customer.city ? ' · ' + h.customer.city : '' }}</p></div>
         <div>
-          @if (auth.can('CUSTOMERS', 'CREATE')) { <a class="btn" routerLink="/enquiries" [queryParams]="{ newFor: h.customer.id }"><app-icon name="plus" [size]="18" /> New enquiry</a> }
+          @if (auth.can('ENQUIRIES', 'CREATE')) { <a class="btn" routerLink="/enquiries" [queryParams]="{ newFor: h.customer.id }"><app-icon name="plus" [size]="18" /> New enquiry</a> }
         </div>
       </div>
 

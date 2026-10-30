@@ -20,14 +20,15 @@ const RIGHTS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'DOWNLOAD', 'SEND'];
     <div class="scroll">
       <table class="matrix">
         <thead>
-          <tr><th>Module</th>@for (r of rights; track r) { <th>{{ label(r) }}</th> }<th>All</th></tr>
+          <tr><th class="sr">Sr.</th><th>Menu</th>@for (r of rights; track r) { <th>{{ label(r) }}</th> }<th>All</th></tr>
         </thead>
         <tbody>
           @for (g of groups; track g.name) {
-            <tr class="grp"><td [attr.colspan]="rights.length + 2">{{ g.name }}</td></tr>
+            <tr class="grp"><td [attr.colspan]="rights.length + 3">{{ g.name }}</td></tr>
             @for (m of g.mods; track m.key) {
               <tr [class.locked]="m.adminOnly">
-                <td>{{ m.label }} @if (m.adminOnly) { <span class="badge">Admin only</span> }</td>
+                <td class="sr">{{ sr(m) }}</td>
+                <td class="nowrap">{{ m.label }} @if (m.adminOnly) { <span class="badge">Admin only</span> } @if (!m.ready) { <span class="badge warn">Coming soon</span> }</td>
                 @for (r of rights; track r) {
                   @if (!m.rights.includes(r)) { <td class="na">&ndash;</td> }
                   @else if (m.adminOnly) { <td><input type="checkbox" disabled [checked]="false" /></td> }
@@ -62,6 +63,8 @@ export class RightsMatrixComponent {
     const inBase = this.base.includes(this.key(m, r)), now = this.has(m, r);
     return now && !inBase ? 1 : !now && inBase ? -1 : 0;
   }
+  /** Serial number in menu order (1 = first module). */
+  sr(m: ModuleInfo) { return this.modules.indexOf(m) + 1; }
   rowFull(m: ModuleInfo) { return m.rights.every(r => this.has(m, r)); }
 
   get groups() {

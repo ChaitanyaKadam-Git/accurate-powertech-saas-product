@@ -15,7 +15,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
   template: `
     <div class="page-h">
       <div><h1>Enquiries</h1><p class="muted">Every enquiry from first contact to commissioning.</p></div>
-      @if (auth.can('CUSTOMERS', 'CREATE')) { <button (click)="openNew()"><app-icon name="plus" [size]="18" /> New enquiry</button> }
+      @if (auth.can('ENQUIRIES', 'CREATE')) { <button (click)="openNew()"><app-icon name="plus" [size]="18" /> New enquiry</button> }
     </div>
 
     @if (stats) {

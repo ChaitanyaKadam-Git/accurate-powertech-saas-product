@@ -81,7 +81,7 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit() {
     if (this.auth.can('QUOTATIONS', 'VIEW')) this.api.list().subscribe(r => (this.rows = r));
-    if (this.auth.can('CUSTOMERS', 'VIEW')) this.api.enquiryStats().subscribe({ next: s => (this.flow = s), error: () => (this.flow = null) });
+    if (this.auth.can('ENQUIRIES', 'VIEW')) this.api.enquiryStats().subscribe({ next: s => (this.flow = s), error: () => (this.flow = null) });
   }
 
   get greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
