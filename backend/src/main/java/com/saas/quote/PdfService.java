@@ -391,9 +391,9 @@ public class PdfService {
     private void bom(Document d, Quotation q) throws Exception {
         boolean prices = q.isShowItemPrices();
         boolean photos = q.getItems().stream().anyMatch(i -> !blank(i.getImageKey()));
-        List<String> heads = new ArrayList<>(List.of("Sr", "Equipment", "Specification", "Make", "UOM", "Qty"));
-        List<Float> widths = new ArrayList<>(List.of(5f, 20f, 26f, 12f, 7f, 7f));
-        if (prices) { heads.add("Unit Price (Rs.)"); heads.add("Amount (Rs.)"); widths.add(12f); widths.add(13f); }
+        List<String> heads = new ArrayList<>(List.of("Sr", "Equipment", "Specification", "Make", "UOM"));
+        List<Float> widths = new ArrayList<>(List.of(5f, 22f, 32f, 14f, 8f));
+        if (prices) { heads.add("Amount (Rs.)"); widths.add(15f); }
         if (photos) { heads.add("Photo"); widths.add(16f); }
 
         PdfPTable t = new PdfPTable(heads.size());
@@ -410,9 +410,7 @@ public class PdfService {
             t.addCell(cell(i.getSpecification(), SM, Element.ALIGN_LEFT));
             t.addCell(cell(i.getMake(), SM, Element.ALIGN_LEFT));
             t.addCell(cell(i.getUom(), SM, Element.ALIGN_CENTER));
-            t.addCell(cell(i.getQty() == null ? "" : i.getQty().stripTrailingZeros().toPlainString(), SM, Element.ALIGN_CENTER));
             if (prices) {
-                t.addCell(cell(INR.format(i.getUnitPrice() == null ? BigDecimal.ZERO : i.getUnitPrice()), SM, Element.ALIGN_RIGHT));
                 t.addCell(cell(INR.format(i.getAmount()), SM, Element.ALIGN_RIGHT));
             }
             if (photos) {
